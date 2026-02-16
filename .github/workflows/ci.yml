@@ -22,7 +22,9 @@ jobs:
         run: uv python install ${{ matrix.python-version }}
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: |
+          uv venv --python ${{ matrix.python-version }}
+          uv pip install -e ".[dev]"
 
       - name: Run tests with coverage
         run: |
@@ -38,7 +40,9 @@ jobs:
           version: "latest"
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: |
+          uv venv
+          uv pip install -e ".[dev]"
 
       - name: Ruff lint
         continue-on-error: true
