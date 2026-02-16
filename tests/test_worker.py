@@ -1,9 +1,7 @@
 """Tests for worker components."""
 
 import subprocess
-import tempfile
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
@@ -46,21 +44,6 @@ def test_get_task_budget():
     budget = get_task_budget()
     assert budget > 0
     assert budget <= 10.0  # Should not exceed daily limit
-
-
-@pytest.fixture
-def git_repo(tmp_path: Path) -> Path:
-    """Create a temporary git repository."""
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    subprocess.run(["git", "init"], cwd=str(repo), capture_output=True)
-    subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=str(repo), capture_output=True)
-    subprocess.run(["git", "config", "user.name", "Test"], cwd=str(repo), capture_output=True)
-    # Create initial commit
-    (repo / "README.md").write_text("# Test\n")
-    subprocess.run(["git", "add", "."], cwd=str(repo), capture_output=True)
-    subprocess.run(["git", "commit", "-m", "init"], cwd=str(repo), capture_output=True)
-    return repo
 
 
 def test_sandbox_lifecycle(git_repo: Path):
