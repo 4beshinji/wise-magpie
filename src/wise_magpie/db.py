@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     source_ref TEXT NOT NULL DEFAULT '',
     status TEXT NOT NULL DEFAULT 'pending',
     priority REAL NOT NULL DEFAULT 0.0,
+    model TEXT NOT NULL DEFAULT '',
     estimated_tokens INTEGER NOT NULL DEFAULT 0,
     work_branch TEXT NOT NULL DEFAULT '',
     work_dir TEXT NOT NULL DEFAULT '',
@@ -56,6 +57,14 @@ CREATE TABLE IF NOT EXISTS tasks (
     created_at TEXT NOT NULL,
     started_at TEXT,
     completed_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS quota_corrections (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    window_id INTEGER NOT NULL,
+    model TEXT NOT NULL,
+    remaining INTEGER NOT NULL,
+    corrected_at TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS schedule_patterns (
@@ -114,9 +123,18 @@ def connect() -> Generator[sqlite3.Connection, None, None]:
 
 
 def init_db() -> None:
-    """Initialize the database schema."""
+    """Initialize the database schema and run migrations."""
     with connect() as conn:
         conn.executescript(SCHEMA)
+        _migrate(conn)
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Run schema migrations for columns added after initial release."""
+    # Add model column to tasks if missing
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(tasks)").fetchall()}
+    if "model" not in cols:
+        conn.execute("ALTER TABLE tasks ADD COLUMN model TEXT NOT NULL DEFAULT ''")
 
 
 # --- Usage Log ---
@@ -203,11 +221,11 @@ def update_quota_window(window: QuotaWindow) -> None:
 def insert_task(task: Task) -> int:
     with connect() as conn:
         cur = conn.execute(
-            "INSERT INTO tasks (title, description, source, source_ref, status, priority, "
+            "INSERT INTO tasks (title, description, source, source_ref, status, priority, model, "
             "estimated_tokens, work_branch, work_dir, result_summary, created_at, started_at, completed_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (task.title, task.description, task.source.value, task.source_ref,
-             task.status.value, task.priority, task.estimated_tokens,
+             task.status.value, task.priority, task.model, task.estimated_tokens,
              task.work_branch, task.work_dir, task.result_summary,
              _fmt_dt(task.created_at), _fmt_dt(task.started_at), _fmt_dt(task.completed_at)),
         )
@@ -219,6 +237,7 @@ def _row_to_task(row: sqlite3.Row) -> Task:
         id=row["id"], title=row["title"], description=row["description"],
         source=TaskSource(row["source"]), source_ref=row["source_ref"],
         status=TaskStatus(row["status"]), priority=row["priority"],
+        model=row["model"],
         estimated_tokens=row["estimated_tokens"],
         work_branch=row["work_branch"], work_dir=row["work_dir"],
         result_summary=row["result_summary"],
@@ -255,10 +274,10 @@ def update_task(task: Task) -> None:
     with connect() as conn:
         conn.execute(
             "UPDATE tasks SET title=?, description=?, source=?, source_ref=?, status=?, "
-            "priority=?, estimated_tokens=?, work_branch=?, work_dir=?, result_summary=?, "
+            "priority=?, model=?, estimated_tokens=?, work_branch=?, work_dir=?, result_summary=?, "
             "started_at=?, completed_at=? WHERE id=?",
             (task.title, task.description, task.source.value, task.source_ref,
-             task.status.value, task.priority, task.estimated_tokens,
+             task.status.value, task.priority, task.model, task.estimated_tokens,
              task.work_branch, task.work_dir, task.result_summary,
              _fmt_dt(task.started_at), _fmt_dt(task.completed_at), task.id),
         )
@@ -331,3 +350,46 @@ def update_activity_session(session: ActivitySession) -> None:
             "UPDATE activity_sessions SET end_time=?, message_count=? WHERE id=?",
             (_fmt_dt(session.end_time), session.message_count, session.id),
         )
+
+
+# --- Model Usage ---
+
+def get_model_usage_count(model: str, since: datetime) -> int:
+    """Return the number of usage_log records for *model* since *since*."""
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) as cnt FROM usage_log WHERE model = ? AND timestamp >= ?",
+            (model, _fmt_dt(since)),
+        ).fetchone()
+    return row["cnt"]
+
+
+# --- Quota Corrections ---
+
+def insert_quota_correction(window_id: int, model: str, remaining: int) -> int:
+    with connect() as conn:
+        cur = conn.execute(
+            "INSERT INTO quota_corrections (window_id, model, remaining, corrected_at) "
+            "VALUES (?, ?, ?, ?)",
+            (window_id, model, remaining, _fmt_dt(datetime.now())),
+        )
+        return cur.lastrowid  # type: ignore[return-value]
+
+
+def get_latest_quota_correction(window_id: int, model: str) -> dict | None:
+    """Return the most recent correction for *model* in *window_id*, or None."""
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM quota_corrections "
+            "WHERE window_id = ? AND model = ? ORDER BY corrected_at DESC LIMIT 1",
+            (window_id, model),
+        ).fetchone()
+    if row is None:
+        return None
+    return {
+        "id": row["id"],
+        "window_id": row["window_id"],
+        "model": row["model"],
+        "remaining": row["remaining"],
+        "corrected_at": _parse_dt(row["corrected_at"]),
+    }

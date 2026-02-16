@@ -17,6 +17,7 @@ from wise_magpie.daemon.signals import SignalHandler
 from wise_magpie.models import Task, TaskStatus
 from wise_magpie.patterns.activity import record_activity
 from wise_magpie.tasks.manager import get_next_task
+from wise_magpie.tasks.model_selector import select_model
 from wise_magpie.worker.executor import execute_task
 from wise_magpie.worker.monitor import check_budget_available, get_task_budget, report_execution
 from wise_magpie.worker.sandbox import cleanup_sandbox, create_sandbox
@@ -70,10 +71,14 @@ def _run_single_task(task: Task) -> None:
     """Execute a single task with sandbox isolation."""
     db.init_db()
 
+    # Select model
+    selected_model = select_model(task)
+    task.model = selected_model
+
     task.status = TaskStatus.RUNNING
     task.started_at = datetime.now()
     db.update_task(task)
-    logger.info(f"Starting task #{task.id}: {task.title}")
+    logger.info(f"Starting task #{task.id}: {task.title} (model: {selected_model})")
 
     # Determine work directory (use current dir if not specified)
     work_dir = task.work_dir or os.getcwd()
@@ -103,6 +108,7 @@ def _run_single_task(task: Task) -> None:
             work_dir=work_dir,
             task_id=task.id,
             max_budget_usd=budget,
+            model=selected_model,
         )
 
         if result.success:

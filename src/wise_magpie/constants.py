@@ -4,7 +4,21 @@ from __future__ import annotations
 
 # Claude Max $200 plan quota defaults (per 5-hour window)
 DEFAULT_QUOTA_WINDOW_HOURS = 5
-DEFAULT_MESSAGES_PER_WINDOW = 225  # approximate
+DEFAULT_MESSAGES_PER_WINDOW = 225  # deprecated: use MODEL_QUOTAS / config [quota.limits]
+
+# Model aliases (short names usable in config and CLI)
+MODEL_ALIASES: dict[str, str] = {
+    "opus": "claude-opus-4-6",
+    "sonnet": "claude-sonnet-4-5-20250929",
+    "haiku": "claude-haiku-4-5-20251001",
+}
+
+# Per-model messages per 5h window (estimates, overridable via config [quota.limits])
+MODEL_QUOTAS: dict[str, int] = {
+    "claude-opus-4-6": 50,
+    "claude-sonnet-4-5-20250929": 225,
+    "claude-haiku-4-5-20251001": 1000,
+}
 
 # Cost estimates per model (USD per 1M tokens)
 MODEL_COSTS = {
@@ -23,6 +37,11 @@ MODEL_COSTS = {
 }
 
 DEFAULT_MODEL = "claude-sonnet-4-5-20250929"
+
+
+def resolve_model(name: str) -> str:
+    """Resolve an alias or full model ID to a full model ID."""
+    return MODEL_ALIASES.get(name, name)
 
 # Safety margins
 QUOTA_SAFETY_MARGIN = 0.15  # Reserve 15% of quota for user

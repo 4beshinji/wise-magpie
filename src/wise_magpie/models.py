@@ -56,6 +56,7 @@ class Task:
     source_ref: str = ""  # e.g. file:line, issue URL
     status: TaskStatus = TaskStatus.PENDING
     priority: float = 0.0
+    model: str = ""  # empty = auto-select
     estimated_tokens: int = 0
     work_branch: str = ""
     work_dir: str = ""

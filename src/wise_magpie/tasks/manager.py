@@ -7,6 +7,7 @@ from datetime import datetime
 import click
 
 from wise_magpie import db
+from wise_magpie.constants import MODEL_ALIASES
 from wise_magpie.models import Task, TaskSource, TaskStatus
 from wise_magpie.tasks.prioritizer import calculate_priority, reprioritize_all
 from wise_magpie.tasks.sources import auto_tasks, git_todos, queue_file
@@ -21,6 +22,14 @@ def _status_label(status: TaskStatus) -> str:
     return status.value
 
 
+def _model_short_name(model: str) -> str:
+    """Convert a full model ID to its short alias, or return as-is."""
+    for alias, full_id in MODEL_ALIASES.items():
+        if full_id == model:
+            return alias
+    return model
+
+
 def _truncate(text: str, width: int = 50) -> str:
     if len(text) <= width:
         return text
@@ -31,7 +40,7 @@ def _truncate(text: str, width: int = 50) -> str:
 # Public API
 # ---------------------------------------------------------------------------
 
-def add_task(title: str, description: str = "", priority: float = 0.0) -> Task:
+def add_task(title: str, description: str = "", priority: float = 0.0, model: str = "") -> Task:
     """Create a new manual task, insert it into the DB, and echo confirmation."""
     db.init_db()
 
@@ -40,6 +49,7 @@ def add_task(title: str, description: str = "", priority: float = 0.0) -> Task:
         description=description,
         source=TaskSource.MANUAL,
         priority=priority,
+        model=model,
         created_at=datetime.now(),
     )
     if priority == 0.0:
@@ -76,15 +86,17 @@ def list_tasks(status_filter: str | None = None) -> list[Task]:
 
     # Table header
     click.echo(
-        f"{'ID':>4}  {'Status':<10}  {'Pri':>5}  {'Source':<10}  {'Title'}"
+        f"{'ID':>4}  {'Status':<10}  {'Pri':>5}  {'Model':<8}  {'Source':<10}  {'Title'}"
     )
-    click.echo("-" * 72)
+    click.echo("-" * 82)
 
     for t in tasks:
+        model_label = _model_short_name(t.model) if t.model else "auto"
         click.echo(
             f"{t.id or 0:>4}  "
             f"{_status_label(t.status):<10}  "
             f"{t.priority:>5.1f}  "
+            f"{model_label:<8}  "
             f"{t.source.value:<10}  "
             f"{_truncate(t.title)}"
         )

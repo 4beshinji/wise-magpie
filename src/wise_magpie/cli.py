@@ -71,10 +71,11 @@ def quota_show() -> None:
 
 @quota.command("correct")
 @click.argument("remaining", type=int)
-def quota_correct(remaining: int) -> None:
+@click.option("--model", "-m", default=None, help="Model to correct quota for (opus/sonnet/haiku)")
+def quota_correct(remaining: int, model: str | None) -> None:
     """Manually correct remaining quota (enter value from Claude UI)."""
     from wise_magpie.quota.corrections import apply_correction
-    apply_correction(remaining)
+    apply_correction(remaining, model=model)
 
 
 @quota.command("history")
@@ -126,10 +127,11 @@ def tasks_list(status: str) -> None:
 @click.argument("title")
 @click.option("--description", "-d", default="", help="Task description")
 @click.option("--priority", "-p", type=float, default=0.0, help="Priority score")
-def tasks_add(title: str, description: str, priority: float) -> None:
+@click.option("--model", "-m", default="", help="Model to use (opus/sonnet/haiku or auto)")
+def tasks_add(title: str, description: str, priority: float, model: str) -> None:
     """Add a task to the queue."""
     from wise_magpie.tasks.manager import add_task
-    add_task(title, description, priority)
+    add_task(title, description, priority, model=model)
 
 
 @tasks.command("scan")

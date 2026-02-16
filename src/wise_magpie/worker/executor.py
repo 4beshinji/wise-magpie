@@ -53,6 +53,7 @@ def execute_task(
     work_dir: str,
     task_id: int | None = None,
     max_budget_usd: float | None = None,
+    model: str | None = None,
     timeout_seconds: int = 600,
 ) -> ExecutionResult:
     """Execute a task using the Claude CLI.
@@ -60,7 +61,7 @@ def execute_task(
     Runs `claude -p <prompt> --output-format json` in the given working directory.
     Records usage in the database.
     """
-    cmd = build_claude_command(prompt, work_dir, max_budget_usd)
+    cmd = build_claude_command(prompt, work_dir, max_budget_usd, model=model)
     start_time = datetime.now()
 
     try:
@@ -116,9 +117,10 @@ def execute_task(
     except (json.JSONDecodeError, TypeError):
         pass
 
-    # Record usage
-    cfg = config.load_config()
-    model = cfg.get("claude", {}).get("model", constants.DEFAULT_MODEL)
+    # Record usage (use the model actually passed, not just config default)
+    if model is None:
+        cfg = config.load_config()
+        model = cfg.get("claude", {}).get("model", constants.DEFAULT_MODEL)
     record_usage(
         model=model,
         input_tokens=input_tokens,

@@ -23,10 +23,14 @@ DEFAULT_CONFIG = """\
 [quota]
 # Quota window duration in hours
 window_hours = {window_hours}
-# Estimated messages per window
-messages_per_window = {messages_per_window}
 # Reserve this fraction of quota for interactive use
 safety_margin = {safety_margin}
+
+# Per-model message limits per window (check Claude UI and adjust)
+[quota.limits]
+opus = {quota_opus}
+sonnet = {quota_sonnet}
+haiku = {quota_haiku}
 
 [budget]
 # Maximum USD per autonomous task
@@ -45,8 +49,10 @@ return_buffer_minutes = {return_buffer_minutes}
 poll_interval = {poll_interval}
 
 [claude]
-# Model to use for autonomous tasks
+# Fallback model for autonomous tasks (alias or full ID)
 model = "{model}"
+# Automatically select model based on task difficulty (default: true)
+auto_select_model = true
 # Additional claude CLI flags
 extra_flags = []
 
@@ -76,8 +82,10 @@ enabled = true
 interval_hours = 168
 """.format(
     window_hours=constants.DEFAULT_QUOTA_WINDOW_HOURS,
-    messages_per_window=constants.DEFAULT_MESSAGES_PER_WINDOW,
     safety_margin=constants.QUOTA_SAFETY_MARGIN,
+    quota_opus=constants.MODEL_QUOTAS["claude-opus-4-6"],
+    quota_sonnet=constants.MODEL_QUOTAS["claude-sonnet-4-5-20250929"],
+    quota_haiku=constants.MODEL_QUOTAS["claude-haiku-4-5-20251001"],
     max_task_usd=constants.MAX_TASK_BUDGET_USD,
     max_daily_usd=constants.MAX_DAILY_AUTONOMOUS_USD,
     idle_threshold_minutes=constants.IDLE_THRESHOLD_MINUTES,
