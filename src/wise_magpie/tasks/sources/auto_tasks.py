@@ -76,6 +76,69 @@ BUILTIN_TEMPLATES: list[AutoTaskTemplate] = [
         description="Check for outdated dependencies and evaluate available upgrades for security and compatibility.",
         interval_hours=168,
     ),
+    AutoTaskTemplate(
+        task_type="security_audit",
+        title="Audit code for security issues",
+        description=(
+            "Scan the codebase for security vulnerabilities: hardcoded secrets, "
+            "SQL injection, XSS, command injection, insecure deserialization, "
+            "and other OWASP Top 10 risks. Report findings and apply fixes."
+        ),
+        interval_hours=168,
+        needs_code_changes=True,
+    ),
+    AutoTaskTemplate(
+        task_type="test_coverage",
+        title="Generate tests for uncovered code",
+        description=(
+            "Identify functions and branches with no test coverage. "
+            "Generate unit tests for the most critical uncovered paths. "
+            "Run the test suite to verify the new tests pass."
+        ),
+        interval_hours=48,
+        needs_code_changes=True,
+    ),
+    AutoTaskTemplate(
+        task_type="dead_code_detection",
+        title="Detect and remove dead code",
+        description=(
+            "Find unused imports, functions, variables, and unreachable code. "
+            "Remove dead code and verify the test suite still passes."
+        ),
+        interval_hours=168,
+        needs_code_changes=True,
+    ),
+    AutoTaskTemplate(
+        task_type="changelog_generation",
+        title="Generate changelog from recent commits",
+        description=(
+            "Review recent commit history and generate or update CHANGELOG entries. "
+            "Group changes by category (added, changed, fixed, removed) "
+            "following Keep a Changelog format."
+        ),
+        min_commits=5,
+    ),
+    AutoTaskTemplate(
+        task_type="deprecation_cleanup",
+        title="Clean up deprecated code usage",
+        description=(
+            "Find usage of deprecated APIs, functions, and patterns in the codebase. "
+            "Migrate to recommended alternatives and remove deprecation warnings."
+        ),
+        interval_hours=336,
+        needs_code_changes=True,
+    ),
+    AutoTaskTemplate(
+        task_type="type_coverage",
+        title="Add type annotations to untyped code",
+        description=(
+            "Identify functions and methods missing type annotations. "
+            "Add type hints for parameters and return values. "
+            "Run the type checker to verify correctness."
+        ),
+        interval_hours=168,
+        needs_code_changes=True,
+    ),
 ]
 
 

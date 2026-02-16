@@ -26,7 +26,7 @@ from wise_magpie.tasks.sources.auto_tasks import (
 
 
 def test_builtin_templates_count():
-    assert len(BUILTIN_TEMPLATES) == 5
+    assert len(BUILTIN_TEMPLATES) == 11
 
 
 def test_template_map_keys():
@@ -37,6 +37,12 @@ def test_template_map_keys():
         "clean_commits",
         "lint_check",
         "dependency_check",
+        "security_audit",
+        "test_coverage",
+        "dead_code_detection",
+        "changelog_generation",
+        "deprecation_cleanup",
+        "type_coverage",
     }
 
 
@@ -386,3 +392,128 @@ def test_scan_uses_work_dir_from_config():
         scan("/ignored/path")
 
     assert all(p == "/custom/repo" for p in calls)
+
+
+# ---------------------------------------------------------------------------
+# New template condition tests
+# ---------------------------------------------------------------------------
+
+
+def test_check_template_security_audit_needs_code_changes():
+    """security_audit requires code changes; should fail if none found."""
+    template = _template_map()["security_audit"]
+    cfg = {"security_audit": {"enabled": True, "interval_hours": 168}}
+
+    with patch(
+        "wise_magpie.tasks.sources.auto_tasks._has_code_changes_since",
+        return_value=False,
+    ):
+        assert _check_template(template, "/tmp", cfg) is False
+
+
+def test_check_template_security_audit_fires():
+    """security_audit with interval elapsed and code changes → should fire."""
+    template = _template_map()["security_audit"]
+    cfg = {"security_audit": {"enabled": True, "interval_hours": 168}}
+
+    with patch(
+        "wise_magpie.tasks.sources.auto_tasks._has_code_changes_since",
+        return_value=True,
+    ):
+        assert _check_template(template, "/tmp", cfg) is True
+
+
+def test_check_template_test_coverage_needs_code_changes():
+    """test_coverage requires code changes; should fail if none found."""
+    template = _template_map()["test_coverage"]
+    cfg = {"test_coverage": {"enabled": True, "interval_hours": 48}}
+
+    with patch(
+        "wise_magpie.tasks.sources.auto_tasks._has_code_changes_since",
+        return_value=False,
+    ):
+        assert _check_template(template, "/tmp", cfg) is False
+
+
+def test_check_template_test_coverage_fires():
+    """test_coverage with interval elapsed and code changes → should fire."""
+    template = _template_map()["test_coverage"]
+    cfg = {"test_coverage": {"enabled": True, "interval_hours": 48}}
+
+    with patch(
+        "wise_magpie.tasks.sources.auto_tasks._has_code_changes_since",
+        return_value=True,
+    ):
+        assert _check_template(template, "/tmp", cfg) is True
+
+
+def test_check_template_dead_code_detection_needs_code_changes():
+    """dead_code_detection requires code changes; should fail if none found."""
+    template = _template_map()["dead_code_detection"]
+    cfg = {"dead_code_detection": {"enabled": True, "interval_hours": 168}}
+
+    with patch(
+        "wise_magpie.tasks.sources.auto_tasks._has_code_changes_since",
+        return_value=False,
+    ):
+        assert _check_template(template, "/tmp", cfg) is False
+
+
+def test_check_template_changelog_generation_below_threshold():
+    """changelog_generation should not fire when commit count is below min_commits."""
+    template = _template_map()["changelog_generation"]
+    cfg = {"changelog_generation": {"enabled": True, "min_commits": 5}}
+
+    with patch(
+        "wise_magpie.tasks.sources.auto_tasks._branch_commit_count",
+        return_value=3,
+    ):
+        assert _check_template(template, "/tmp", cfg) is False
+
+
+def test_check_template_changelog_generation_above_threshold():
+    """changelog_generation should fire when commit count >= min_commits."""
+    template = _template_map()["changelog_generation"]
+    cfg = {"changelog_generation": {"enabled": True, "min_commits": 5}}
+
+    with patch(
+        "wise_magpie.tasks.sources.auto_tasks._branch_commit_count",
+        return_value=7,
+    ):
+        assert _check_template(template, "/tmp", cfg) is True
+
+
+def test_check_template_deprecation_cleanup_needs_code_changes():
+    """deprecation_cleanup requires code changes; should fail if none found."""
+    template = _template_map()["deprecation_cleanup"]
+    cfg = {"deprecation_cleanup": {"enabled": True, "interval_hours": 336}}
+
+    with patch(
+        "wise_magpie.tasks.sources.auto_tasks._has_code_changes_since",
+        return_value=False,
+    ):
+        assert _check_template(template, "/tmp", cfg) is False
+
+
+def test_check_template_type_coverage_needs_code_changes():
+    """type_coverage requires code changes; should fail if none found."""
+    template = _template_map()["type_coverage"]
+    cfg = {"type_coverage": {"enabled": True, "interval_hours": 168}}
+
+    with patch(
+        "wise_magpie.tasks.sources.auto_tasks._has_code_changes_since",
+        return_value=False,
+    ):
+        assert _check_template(template, "/tmp", cfg) is False
+
+
+def test_check_template_type_coverage_fires():
+    """type_coverage with interval elapsed and code changes → should fire."""
+    template = _template_map()["type_coverage"]
+    cfg = {"type_coverage": {"enabled": True, "interval_hours": 168}}
+
+    with patch(
+        "wise_magpie.tasks.sources.auto_tasks._has_code_changes_since",
+        return_value=True,
+    ):
+        assert _check_template(template, "/tmp", cfg) is True

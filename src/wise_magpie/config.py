@@ -80,6 +80,30 @@ interval_hours = 12
 [auto_tasks.dependency_check]
 enabled = true
 interval_hours = 168
+
+[auto_tasks.security_audit]
+enabled = true
+interval_hours = 168
+
+[auto_tasks.test_coverage]
+enabled = true
+interval_hours = 48
+
+[auto_tasks.dead_code_detection]
+enabled = true
+interval_hours = 168
+
+[auto_tasks.changelog_generation]
+enabled = true
+min_commits = 5
+
+[auto_tasks.deprecation_cleanup]
+enabled = true
+interval_hours = 336
+
+[auto_tasks.type_coverage]
+enabled = true
+interval_hours = 168
 """.format(
     window_hours=constants.DEFAULT_QUOTA_WINDOW_HOURS,
     safety_margin=constants.QUOTA_SAFETY_MARGIN,

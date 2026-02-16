@@ -36,12 +36,14 @@ COMPLEX_KEYWORDS = frozenset({
     "security", "vulnerability", "architecture", "migration",
     "performance", "critical", "concurrent", "race condition",
     "refactor", "redesign", "optimize", "scalab",
+    "audit", "injection", "xss", "owasp", "exploit",
 })
 
 SIMPLE_KEYWORDS = frozenset({
     "docs", "documentation", "lint", "format", "typo",
     "clean", "todo", "comment", "rename", "update docs",
     "readme", "changelog", "license",
+    "dead code", "unused", "unreachable",
 })
 
 
