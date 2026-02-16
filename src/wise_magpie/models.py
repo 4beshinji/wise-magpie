@@ -21,6 +21,7 @@ class TaskSource(enum.Enum):
     ISSUE = "issue"
     MARKDOWN = "markdown"
     QUEUE_FILE = "queue_file"
+    AUTO_TASK = "auto_task"
 
 
 @dataclass

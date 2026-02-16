@@ -49,6 +49,31 @@ poll_interval = {poll_interval}
 model = "{model}"
 # Additional claude CLI flags
 extra_flags = []
+
+[auto_tasks]
+# Automatically generate routine maintenance tasks during scan
+enabled = false
+work_dir = "."
+
+[auto_tasks.run_tests]
+enabled = true
+interval_hours = 24
+
+[auto_tasks.update_docs]
+enabled = true
+interval_hours = 48
+
+[auto_tasks.clean_commits]
+enabled = true
+min_commits = 10
+
+[auto_tasks.lint_check]
+enabled = true
+interval_hours = 12
+
+[auto_tasks.dependency_check]
+enabled = true
+interval_hours = 168
 """.format(
     window_hours=constants.DEFAULT_QUOTA_WINDOW_HOURS,
     messages_per_window=constants.DEFAULT_MESSAGES_PER_WINDOW,

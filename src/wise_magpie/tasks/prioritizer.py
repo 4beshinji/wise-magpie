@@ -12,6 +12,7 @@ _SOURCE_WEIGHT: dict[TaskSource, float] = {
     TaskSource.MANUAL: 40.0,
     TaskSource.QUEUE_FILE: 35.0,
     TaskSource.ISSUE: 30.0,
+    TaskSource.AUTO_TASK: 25.0,
     TaskSource.GIT_TODO: 20.0,
     TaskSource.MARKDOWN: 15.0,
 }

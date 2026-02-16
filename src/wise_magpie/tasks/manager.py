@@ -9,7 +9,7 @@ import click
 from wise_magpie import db
 from wise_magpie.models import Task, TaskSource, TaskStatus
 from wise_magpie.tasks.prioritizer import calculate_priority, reprioritize_all
-from wise_magpie.tasks.sources import git_todos, queue_file
+from wise_magpie.tasks.sources import auto_tasks, git_todos, queue_file
 
 
 # ---------------------------------------------------------------------------
@@ -104,6 +104,7 @@ def scan_tasks(path: str) -> int:
     found: list[Task] = []
     found.extend(git_todos.scan(path))
     found.extend(queue_file.scan(path))
+    found.extend(auto_tasks.scan(path))
 
     click.echo(f"Scanned: found {len(found)} candidate task(s).")
 
