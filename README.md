@@ -59,7 +59,7 @@ wise-magpie start
 | コマンド | 説明 |
 |---------|------|
 | `quota show` | 残りクォータの推定値を表示 |
-| `quota correct <remaining>` | Claude UI の値で手動補正 |
+| `quota correct <remaining> [-m MODEL]` | Claude UI の値で手動補正 |
 | `quota history [--days N]` | 使用履歴を表示（デフォルト 7 日） |
 
 ### スケジュール
@@ -74,7 +74,7 @@ wise-magpie start
 | コマンド | 説明 |
 |---------|------|
 | `tasks list [--status STATUS]` | タスク一覧（pending/running/completed/failed/all） |
-| `tasks add <title> [-d DESC] [-p PRI]` | 手動タスク追加 |
+| `tasks add <title> [-d DESC] [-p PRI] [-m MODEL]` | 手動タスク追加 |
 | `tasks scan [--path PATH]` | リポジトリスキャン（TODO コメント + キューファイル + 自動タスク） |
 | `tasks remove <id>` | タスク削除（実行中は不可） |
 
@@ -147,6 +147,14 @@ work_dir = "."  # 対象リポジトリのパス
 | `lint_check` | コード変更あり | 12 時間 |
 | `clean_commits` | ブランチに 10+ commit | — |
 | `dependency_check` | 時間経過のみ | 168 時間（1 週間） |
+| `security_audit` | コード変更あり | 168 時間（1 週間） |
+| `test_coverage` | コード変更あり | 48 時間 |
+| `dead_code_detection` | コード変更あり | 168 時間（1 週間） |
+| `changelog_generation` | ブランチに 5+ commit | — |
+| `deprecation_cleanup` | コード変更あり | 336 時間（2 週間） |
+| `type_coverage` | コード変更あり | 168 時間（1 週間） |
+
+各テンプレートの詳細は [自動タスク詳細ガイド](docs/auto-tasks.md) を参照。
 
 #### テンプレート個別設定
 
@@ -202,8 +210,12 @@ interval_hours = 336     # 2 週間に変更
 ```toml
 [quota]
 window_hours = 5            # クォータウィンドウ（時間）
-messages_per_window = 225   # ウィンドウあたりのメッセージ数
 safety_margin = 0.15        # インタラクティブ用に 15% を確保
+
+[quota.limits]
+opus = 50                   # Opus のウィンドウあたりメッセージ数
+sonnet = 225                # Sonnet のウィンドウあたりメッセージ数
+haiku = 1000                # Haiku のウィンドウあたりメッセージ数
 
 [budget]
 max_task_usd = 2.0          # タスクあたりの上限（USD）
@@ -217,9 +229,12 @@ return_buffer_minutes = 15  # 復帰予測の N 分前にタスク開始を停�
 poll_interval = 60          # ポーリング間隔（秒）
 
 [claude]
-model = "claude-sonnet-4-5-20250929"
+model = "sonnet"            # デフォルトモデル（opus/sonnet/haiku）
+auto_select_model = true    # タスク難度に基づくモデル自動選択
 extra_flags = []
 ```
+
+全設定項目の詳細は [設定リファレンス](docs/configuration.md) を参照。
 
 ## 安全設計
 
@@ -228,6 +243,16 @@ extra_flags = []
 - **予算上限** — タスク単位・日単位の USD 上限で意図しないコスト発生を防止
 - **クォータ安全マージン** — 推定クォータの 15% をインタラクティブ利用のために確保
 - **復帰バッファ** — ユーザーの復帰が予測される 15 分前に新規タスク開始を停止
+
+## 詳細ドキュメント
+
+| ドキュメント | 内容 |
+|-------------|------|
+| [はじめに](docs/getting-started.md) | インストール、初期設定、最初のタスク実行フロー |
+| [設定リファレンス](docs/configuration.md) | 全設定項目の詳細、モデル別クォータ/コスト表、設定例 |
+| [自動タスク詳細ガイド](docs/auto-tasks.md) | 全 11 テンプレートの仕様、条件チェックロジック、カスタマイズ例 |
+| [アーキテクチャ概要](docs/architecture.md) | コンポーネント図、デーモンループ、タスクライフサイクル、安全設計 |
+| [トラブルシューティング](docs/troubleshooting.md) | よくあるエラーと解決方法、ログの確認、FAQ |
 
 ## 開発
 
