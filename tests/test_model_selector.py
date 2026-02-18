@@ -217,19 +217,27 @@ def test_get_model_usage_count():
     assert sonnet_count == 1
 
 
-def test_quota_correction_per_model():
-    """Per-model correction should be recorded and retrievable."""
+def test_quota_correction_session():
+    """Session percentage correction should be recorded and affect remaining estimate."""
     from wise_magpie.quota.corrections import apply_correction
+    from wise_magpie.quota.estimator import estimate_remaining
+    from wise_magpie import constants
 
-    apply_correction(40, model="opus")
+    apply_correction(session=50)  # 50% used in current session
 
     window = db.get_current_quota_window()
     assert window is not None
 
-    correction = db.get_latest_quota_correction(window.id, "claude-opus-4-6")  # type: ignore[arg-type]
+    sonnet_id = constants.MODEL_ALIASES["sonnet"]
+    correction = db.get_latest_quota_correction(window.id, sonnet_id)  # type: ignore[arg-type]
     assert correction is not None
-    assert correction["remaining"] == 40
-    assert correction["model"] == "claude-opus-4-6"
+    assert correction["scope"] == "session"
+    assert correction["remaining"] == 50  # stored as pct_used
+
+    est = estimate_remaining(model=sonnet_id)
+    sonnet_limit = est["estimated_limit"]
+    # Remaining should be roughly 50% of limit
+    assert est["remaining"] <= sonnet_limit // 2 + 1
 
 
 def test_task_model_field_persists():

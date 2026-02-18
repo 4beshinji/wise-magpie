@@ -85,7 +85,16 @@ def estimate_remaining(model: str | None = None) -> dict:
     # Check for per-model correction
     correction = db.get_latest_quota_correction(window.id, model) if window.id else None  # type: ignore[arg-type]
 
-    if correction is not None:
+    if correction is not None and correction["scope"] == "session":
+        # New-style: remaining stores pct_used from Claude's "Current session X%"
+        pct_used = correction["remaining"]
+        base_remaining = int((1 - pct_used / 100) * model_limit)
+        corrected_at = correction["corrected_at"]
+        post_correction_count = db.get_model_usage_count(model, corrected_at)
+        remaining = max(base_remaining - post_correction_count, 0)
+        used = model_limit - remaining
+    elif correction is not None and correction["scope"] == "legacy":
+        # Legacy: remaining stores raw remaining message count
         corrected_at = correction["corrected_at"]
         post_correction_count = db.get_model_usage_count(model, corrected_at)
         remaining = max(correction["remaining"] - post_correction_count, 0)
@@ -93,7 +102,7 @@ def estimate_remaining(model: str | None = None) -> dict:
     elif window.user_correction is not None and model == resolve_model(
         config.get("claude", "model", constants.DEFAULT_MODEL)
     ):
-        # Legacy per-window correction (backward compat for default model)
+        # Oldest legacy: per-window user_correction field
         post_correction_records = db.get_usage_since(window.corrected_at)  # type: ignore[arg-type]
         used_after_correction = len(post_correction_records)
         remaining = max(window.user_correction - used_after_correction, 0)
@@ -126,8 +135,23 @@ def show_quota() -> None:
     """Display a human-readable per-model quota summary."""
     db.init_db()
 
+    # Fetch resets_at from API for accurate window end (read-only, no correction applied)
+    try:
+        from wise_magpie.quota.claude_api import fetch_usage
+        snapshot = fetch_usage()
+    except Exception:
+        snapshot = None
+
     window = _ensure_window()
-    window_end = window.window_start + timedelta(hours=window.window_hours)
+    # Use API-provided resets_at if available, otherwise fall back to estimate
+    if snapshot and snapshot.get("five_hour_resets_at"):
+        resets_at = snapshot["five_hour_resets_at"]
+        if resets_at.tzinfo is not None:
+            from datetime import timezone
+            resets_at = resets_at.astimezone(timezone.utc).replace(tzinfo=None)
+        window_end = resets_at
+    else:
+        window_end = window.window_start + timedelta(hours=window.window_hours)
 
     click.echo("Quota Status")
     click.echo("=" * 60)
@@ -151,6 +175,18 @@ def show_quota() -> None:
     default_info = estimate_remaining()
     click.echo(f"Safety margin: {default_info['safety_reserved']} messages reserved")
     click.echo(f"Autonomous:    {default_info['available_for_autonomous']} messages available")
+
+    # Show most recent /usage percentages entered by user
+    weekly = db.get_latest_weekly_corrections()
+    if weekly["week_all"] or weekly["week_sonnet"]:
+        click.echo()
+        click.echo("Last /usage input:")
+        if weekly["week_all"]:
+            ts = weekly["week_all"]["corrected_at"].strftime("%m/%d %H:%M")
+            click.echo(f"  Current week (all models):    {weekly['week_all']['pct_used']}%  [{ts}]")
+        if weekly["week_sonnet"]:
+            ts = weekly["week_sonnet"]["corrected_at"].strftime("%m/%d %H:%M")
+            click.echo(f"  Current week (sonnet only):   {weekly['week_sonnet']['pct_used']}%  [{ts}]")
 
 
 def has_budget_for_task(estimated_cost: float, model: str | None = None) -> bool:

@@ -139,6 +139,22 @@ BUILTIN_TEMPLATES: list[AutoTaskTemplate] = [
         interval_hours=168,
         needs_code_changes=True,
     ),
+    AutoTaskTemplate(
+        task_type="pentest_checklist",
+        title="Run penetration test checklist",
+        description=(
+            "Perform authorized penetration testing on the application. "
+            "Check authentication and session management (brute-force protection, "
+            "session fixation, insecure tokens). "
+            "Test for insecure direct object references (IDOR) and privilege escalation. "
+            "Fuzz API endpoints for unexpected inputs and error disclosure. "
+            "Review access controls and verify least-privilege enforcement. "
+            "Run automated scanners where applicable (bandit, semgrep, OWASP ZAP). "
+            "Document each finding with severity (Critical/High/Medium/Low) and remediation steps."
+        ),
+        interval_hours=720,
+        needs_code_changes=True,
+    ),
 ]
 
 

@@ -44,9 +44,23 @@ def test_quota_show():
 
 def test_quota_correct():
     runner = CliRunner()
-    result = runner.invoke(main, ["quota", "correct", "150"])
+    result = runner.invoke(main, ["quota", "correct", "--session", "20"])
     assert result.exit_code == 0
-    assert "Correction applied" in result.output
+    assert "Session correction applied" in result.output
+
+
+def test_quota_correct_week_options():
+    runner = CliRunner()
+    result = runner.invoke(main, ["quota", "correct", "--week-all", "30", "--week-sonnet", "5"])
+    assert result.exit_code == 0
+    assert "Weekly (all models)" in result.output
+    assert "Weekly (sonnet only)" in result.output
+
+
+def test_quota_correct_no_args_fails():
+    runner = CliRunner()
+    result = runner.invoke(main, ["quota", "correct"])
+    assert result.exit_code != 0
 
 
 def test_tasks_add_and_list():

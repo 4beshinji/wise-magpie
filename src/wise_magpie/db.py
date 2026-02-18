@@ -136,6 +136,20 @@ def _migrate(conn: sqlite3.Connection) -> None:
     if "model" not in cols:
         conn.execute("ALTER TABLE tasks ADD COLUMN model TEXT NOT NULL DEFAULT ''")
 
+    # Add scope column to quota_corrections if missing.
+    # scope values:
+    #   'session'      - pct_used from Claude's "Current session X%"
+    #   'week_all'     - pct_used from Claude's "Current week (all models) X%"
+    #   'week_sonnet'  - pct_used from Claude's "Current week (sonnet only) X%"
+    #   'legacy'       - old rows: remaining stores raw remaining message count
+    # For 'session' scope, remaining = pct_used (0-100); estimator derives
+    # actual remaining as (1 - pct/100) * model_limit - post_correction_usage.
+    corr_cols = {row[1] for row in conn.execute("PRAGMA table_info(quota_corrections)").fetchall()}
+    if "scope" not in corr_cols:
+        conn.execute(
+            "ALTER TABLE quota_corrections ADD COLUMN scope TEXT NOT NULL DEFAULT 'legacy'"
+        )
+
 
 # --- Usage Log ---
 
@@ -366,22 +380,36 @@ def get_model_usage_count(model: str, since: datetime) -> int:
 
 # --- Quota Corrections ---
 
-def insert_quota_correction(window_id: int, model: str, remaining: int) -> int:
+def insert_quota_correction(
+    window_id: int,
+    model: str,
+    remaining: int,
+    scope: str = "legacy",
+) -> int:
+    """Insert a quota correction record.
+
+    *remaining* semantics depend on *scope*:
+      - 'legacy': raw remaining message count (old behaviour)
+      - 'session': percentage used (0-100) from Claude's "Current session X%"
+      - 'week_all': percentage used from "Current week (all models) X%"
+      - 'week_sonnet': percentage used from "Current week (sonnet only) X%"
+    """
     with connect() as conn:
         cur = conn.execute(
-            "INSERT INTO quota_corrections (window_id, model, remaining, corrected_at) "
-            "VALUES (?, ?, ?, ?)",
-            (window_id, model, remaining, _fmt_dt(datetime.now())),
+            "INSERT INTO quota_corrections (window_id, model, remaining, corrected_at, scope) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (window_id, model, remaining, _fmt_dt(datetime.now()), scope),
         )
         return cur.lastrowid  # type: ignore[return-value]
 
 
 def get_latest_quota_correction(window_id: int, model: str) -> dict | None:
-    """Return the most recent correction for *model* in *window_id*, or None."""
+    """Return the most recent 'session' or 'legacy' correction for *model*, or None."""
     with connect() as conn:
         row = conn.execute(
             "SELECT * FROM quota_corrections "
-            "WHERE window_id = ? AND model = ? ORDER BY corrected_at DESC LIMIT 1",
+            "WHERE window_id = ? AND model = ? AND scope IN ('session', 'legacy') "
+            "ORDER BY corrected_at DESC LIMIT 1",
             (window_id, model),
         ).fetchone()
     if row is None:
@@ -391,5 +419,24 @@ def get_latest_quota_correction(window_id: int, model: str) -> dict | None:
         "window_id": row["window_id"],
         "model": row["model"],
         "remaining": row["remaining"],
+        "scope": row["scope"],
         "corrected_at": _parse_dt(row["corrected_at"]),
     }
+
+
+def get_latest_weekly_corrections() -> dict[str, dict | None]:
+    """Return the most recent week_all and week_sonnet corrections (any window)."""
+    result: dict[str, dict | None] = {"week_all": None, "week_sonnet": None}
+    with connect() as conn:
+        for scope in ("week_all", "week_sonnet"):
+            row = conn.execute(
+                "SELECT * FROM quota_corrections WHERE scope = ? "
+                "ORDER BY corrected_at DESC LIMIT 1",
+                (scope,),
+            ).fetchone()
+            if row is not None:
+                result[scope] = {
+                    "pct_used": row["remaining"],
+                    "corrected_at": _parse_dt(row["corrected_at"]),
+                }
+    return result

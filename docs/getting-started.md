@@ -52,17 +52,30 @@ wise-magpie config edit
 
 設定の詳細は [設定リファレンス](./configuration.md) を参照してください。
 
-### 3. クォータの確認
+### 3. クォータの同期
 
 ```bash
-wise-magpie quota show
+wise-magpie quota sync
 ```
 
-モデルごとの推定残りクォータが表示されます。初回は推定値のため、Claude UI の実際の値で補正することを推奨します:
+`~/.claude/.credentials.json` に保存された認証情報を使い、Anthropic の API から現在のクォータ使用率を自動取得して表示します。このセッション以外の他プロジェクトでの使用分も含めた正確な値が反映されます。
+
+デーモン起動後は 30 分ごとに自動同期されます。手動で確認したい場合はいつでも実行できます。
+
+#### ネットワーク接続がない場合や手動補正したい場合
+
+Claude の `/usage` コマンドで表示される 3 つのパーセンテージを直接入力することもできます:
 
 ```bash
-wise-magpie quota correct 200 -m sonnet
+# /usage の表示例:
+#   Current session          12%
+#   Current week (all models) 28%
+#   Current week (sonnet only) 4%
+
+wise-magpie quota correct --session 12 --week-all 28 --week-sonnet 4
 ```
+
+各オプションは独立しており、必要な値だけ指定できます。
 
 ## 最初のタスク実行フロー
 

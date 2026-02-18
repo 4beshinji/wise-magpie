@@ -33,6 +33,8 @@ wise-magpie config show          # 現在の設定を表示
 wise-magpie config edit          # エディタで編集
 ```
 
+> **旧バージョンからのアップグレード**: `config.toml` に新しいセクションが追加されていても、`load_config()` がデフォルト値と自動マージするため再生成は不要です。
+
 ## 全セクション詳細
 
 ### `[quota]` — クォータ管理
@@ -61,6 +63,26 @@ safety_margin = 0.15
 opus = 50
 sonnet = 225
 haiku = 1000
+```
+
+#### クォータ同期コマンド
+
+| コマンド | 説明 |
+|---------|------|
+| `quota sync` | Anthropic API から使用率を自動取得して補正（推奨） |
+| `quota show` | 現在のクォータ状態を表示（表示前に API からウィンドウ終了時刻を取得） |
+| `quota correct --session N [--week-all N] [--week-sonnet N]` | Claude の `/usage` に表示される % を手動入力 |
+
+**`quota sync` の仕組み:**
+`~/.claude/.credentials.json` の OAuth トークンを使い `https://api.anthropic.com/api/oauth/usage` を呼び出します。返ってくる値はこのセッション以外の他プロジェクトでの使用分も含む正確なクォータ使用率です。デーモン起動中は `daemon.auto_sync_interval_minutes`（デフォルト 30 分）ごとに自動実行されます。
+
+**`quota correct` の入力形式（手動補正）:**
+```bash
+# Claude で /usage を実行して見えた値をそのまま入力
+# Current session          12%  → --session 12
+# Current week (all models) 28% → --week-all 28
+# Current week (sonnet only) 4% → --week-sonnet 4
+wise-magpie quota correct --session 12 --week-all 28 --week-sonnet 4
 ```
 
 ### `[budget]` — 予算制御
@@ -94,10 +116,12 @@ return_buffer_minutes = 15
 | キー | 型 | デフォルト | 説明 |
 |------|----|-----------|------|
 | `poll_interval` | int | `60` | デーモンのポーリング間隔（秒） |
+| `auto_sync_interval_minutes` | int | `30` | クォータ自動同期の間隔（分）。`0` で無効化 |
 
 ```toml
 [daemon]
 poll_interval = 60
+auto_sync_interval_minutes = 30
 ```
 
 ### `[claude]` — Claude CLI 設定
@@ -163,9 +187,6 @@ CLI や設定ファイルではエイリアス（短縮名）が使えます。
 ```bash
 # エイリアスでタスク追加
 wise-magpie tasks add "Fix bug" -m opus
-
-# クォータ補正もエイリアスで
-wise-magpie quota correct 45 -m opus
 ```
 
 ## モデル別クォータ/コスト表
@@ -209,7 +230,8 @@ idle_threshold_minutes = 60  # 60分待ってからタスク開始
 return_buffer_minutes = 30   # 30分前に停止
 
 [daemon]
-poll_interval = 120    # 2分間隔
+poll_interval = 120              # 2分間隔
+auto_sync_interval_minutes = 60  # クォータ同期を60分ごとに
 
 [claude]
 model = "haiku"        # デフォルトを Haiku に
@@ -240,7 +262,8 @@ idle_threshold_minutes = 15  # 15分でアイドル判定
 return_buffer_minutes = 10   # 10分前に停止
 
 [daemon]
-poll_interval = 30     # 30秒間隔
+poll_interval = 30              # 30秒間隔
+auto_sync_interval_minutes = 15 # クォータ同期を15分ごとに
 
 [claude]
 model = "sonnet"

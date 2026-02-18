@@ -149,11 +149,31 @@ def _daemon_loop(handler: SignalHandler) -> None:
     db.init_db()
     cfg = config.load_config()
     poll_interval = cfg.get("daemon", {}).get("poll_interval", constants.POLL_INTERVAL_SECONDS)
+    sync_interval = cfg.get("quota", {}).get(
+        "auto_sync_interval_minutes", constants.QUOTA_AUTO_SYNC_INTERVAL_MINUTES
+    ) * 60  # convert to seconds
 
     logger.info("Daemon started (PID %d)", os.getpid())
 
+    last_sync_at = 0.0  # force sync on first iteration
+
+    import time as _time
+
     while not handler.should_stop:
         try:
+            # Periodically auto-sync quota from Anthropic API
+            now = _time.monotonic()
+            if now - last_sync_at >= sync_interval:
+                try:
+                    from wise_magpie.quota.corrections import auto_sync
+                    if auto_sync():
+                        logger.info("Quota auto-synced from Anthropic API")
+                    else:
+                        logger.debug("Quota auto-sync skipped (no credentials or network)")
+                except Exception:
+                    logger.debug("Quota auto-sync failed", exc_info=True)
+                last_sync_at = now
+
             # Record activity state
             record_activity()
 

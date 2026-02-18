@@ -26,7 +26,7 @@ from wise_magpie.tasks.sources.auto_tasks import (
 
 
 def test_builtin_templates_count():
-    assert len(BUILTIN_TEMPLATES) == 11
+    assert len(BUILTIN_TEMPLATES) == 12
 
 
 def test_template_map_keys():
@@ -43,6 +43,7 @@ def test_template_map_keys():
         "changelog_generation",
         "deprecation_cleanup",
         "type_coverage",
+        "pentest_checklist",
     }
 
 
@@ -517,3 +518,35 @@ def test_check_template_type_coverage_fires():
         return_value=True,
     ):
         assert _check_template(template, "/tmp", cfg) is True
+
+
+def test_check_template_pentest_checklist_needs_code_changes():
+    """pentest_checklist requires code changes; should fail if none found."""
+    template = _template_map()["pentest_checklist"]
+    cfg = {"pentest_checklist": {"enabled": True, "interval_hours": 720}}
+
+    with patch(
+        "wise_magpie.tasks.sources.auto_tasks._has_code_changes_since",
+        return_value=False,
+    ):
+        assert _check_template(template, "/tmp", cfg) is False
+
+
+def test_check_template_pentest_checklist_fires():
+    """pentest_checklist with interval elapsed and code changes → should fire."""
+    template = _template_map()["pentest_checklist"]
+    cfg = {"pentest_checklist": {"enabled": True, "interval_hours": 720}}
+
+    with patch(
+        "wise_magpie.tasks.sources.auto_tasks._has_code_changes_since",
+        return_value=True,
+    ):
+        assert _check_template(template, "/tmp", cfg) is True
+
+
+def test_check_template_pentest_checklist_disabled():
+    """pentest_checklist should not fire when disabled in config."""
+    template = _template_map()["pentest_checklist"]
+    cfg = {"pentest_checklist": {"enabled": False}}
+
+    assert _check_template(template, "/tmp", cfg) is False

@@ -8,6 +8,7 @@ Claude Max $200 プランは 5 時間ウィンドウごとに約 225 メッセ�
 
 ## 主な機能
 
+- **クォータ自動同期** — Anthropic API からクォータ使用率を自動取得（30 分ごと）。他セッション・他プロジェクトの使用分も含めた正確な値を追跡
 - **クォータ追跡** — ウィンドウ内の残り利用可能数を推定し、安全マージンを確保
 - **アクティビティ検知** — Claude プロセスの有無でユーザーのアクティブ／アイドルを判定
 - **アイドル予測** — 過去の利用パターンから将来のアイドルウィンドウを予測
@@ -31,16 +32,19 @@ Python 3.10 以上が必要。
 # 1. 設定ファイルを生成
 wise-magpie config init
 
-# 2. タスクを追加
+# 2. クォータを Anthropic API から自動同期（他プロジェクトの使用分も含む）
+wise-magpie quota sync
+
+# 3. タスクを追加
 wise-magpie tasks add "Fix authentication bug" -d "Login fails on Safari"
 
-# 3. リポジトリをスキャンして TODO/キューファイルからタスクを取り込み
+# 4. リポジトリをスキャンして TODO/キューファイルからタスクを取り込み
 wise-magpie tasks scan --path .
 
-# 4. タスクキューを確認
+# 5. タスクキューを確認
 wise-magpie tasks list
 
-# 5. デーモンを起動（アイドル時に自動実行開始）
+# 6. デーモンを起動（アイドル時に自動実行開始・クォータは30分ごとに自動同期）
 wise-magpie start
 ```
 
@@ -58,8 +62,9 @@ wise-magpie start
 
 | コマンド | 説明 |
 |---------|------|
-| `quota show` | 残りクォータの推定値を表示 |
-| `quota correct <remaining> [-m MODEL]` | Claude UI の値で手動補正 |
+| `quota show` | 残りクォータの推定値を表示（表示時に API 同期） |
+| `quota sync` | Anthropic API からクォータを即時同期して表示 |
+| `quota correct --session N [--week-all N] [--week-sonnet N]` | `/usage` の値で手動補正（各値は % で指定） |
 | `quota history [--days N]` | 使用履歴を表示（デフォルト 7 日） |
 
 ### スケジュール
@@ -153,6 +158,7 @@ work_dir = "."  # 対象リポジトリのパス
 | `changelog_generation` | ブランチに 5+ commit | — |
 | `deprecation_cleanup` | コード変更あり | 336 時間（2 週間） |
 | `type_coverage` | コード変更あり | 168 時間（1 週間） |
+| `pentest_checklist` | コード変更あり | 720 時間（30 日） |
 
 各テンプレートの詳細は [自動タスク詳細ガイド](docs/auto-tasks.md) を参照。
 
@@ -226,7 +232,8 @@ idle_threshold_minutes = 30 # アイドル判定の閾値
 return_buffer_minutes = 15  # 復帰予測の N 分前にタスク開始を停止
 
 [daemon]
-poll_interval = 60          # ポーリング間隔（秒）
+poll_interval = 60                  # ポーリング間隔（秒）
+auto_sync_interval_minutes = 30     # クォータ自動同期の間隔（分、0 で無効）
 
 [claude]
 model = "sonnet"            # デフォルトモデル（opus/sonnet/haiku）

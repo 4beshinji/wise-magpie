@@ -45,6 +45,40 @@ class TestTodoRegex:
         assert _TODO_RE.search("this is a regular line") is None
 
 
+class TestIsTestFile:
+    def test_tests_directory(self):
+        from wise_magpie.tasks.sources.git_todos import _is_test_file
+        assert _is_test_file("tests/test_foo.py") is True
+
+    def test_test_directory(self):
+        from wise_magpie.tasks.sources.git_todos import _is_test_file
+        assert _is_test_file("test/helpers.py") is True
+
+    def test_spec_directory(self):
+        from wise_magpie.tasks.sources.git_todos import _is_test_file
+        assert _is_test_file("spec/foo_spec.rb") is True
+
+    def test_test_prefix_filename(self):
+        from wise_magpie.tasks.sources.git_todos import _is_test_file
+        assert _is_test_file("src/test_utils.py") is True
+
+    def test_test_suffix_filename(self):
+        from wise_magpie.tasks.sources.git_todos import _is_test_file
+        assert _is_test_file("src/utils_test.py") is True
+
+    def test_jest_test_file(self):
+        from wise_magpie.tasks.sources.git_todos import _is_test_file
+        assert _is_test_file("src/foo.test.ts") is True
+
+    def test_normal_source_file(self):
+        from wise_magpie.tasks.sources.git_todos import _is_test_file
+        assert _is_test_file("src/utils.py") is False
+
+    def test_nested_normal_file(self):
+        from wise_magpie.tasks.sources.git_todos import _is_test_file
+        assert _is_test_file("src/module/helpers.py") is False
+
+
 class TestScan:
     def test_empty_repo(self, git_repo: Path):
         tasks = scan(str(git_repo))
@@ -91,3 +125,27 @@ class TestScan:
         _commit(git_repo)
         tasks = scan(str(git_repo))
         assert tasks == []
+
+    def test_ignores_test_directory(self, git_repo: Path):
+        tests_dir = git_repo / "tests"
+        tests_dir.mkdir()
+        (tests_dir / "test_foo.py").write_text("# TODO: fix this test\n")
+        _commit(git_repo)
+        tasks = scan(str(git_repo))
+        assert tasks == []
+
+    def test_ignores_test_prefixed_files(self, git_repo: Path):
+        (git_repo / "test_utils.py").write_text("# TODO: mock this\n")
+        _commit(git_repo)
+        tasks = scan(str(git_repo))
+        assert tasks == []
+
+    def test_source_todos_still_found_alongside_tests(self, git_repo: Path):
+        tests_dir = git_repo / "tests"
+        tests_dir.mkdir()
+        (tests_dir / "test_foo.py").write_text("# TODO: test only\n")
+        (git_repo / "app.py").write_text("# TODO: real todo\n")
+        _commit(git_repo)
+        tasks = scan(str(git_repo))
+        assert len(tasks) == 1
+        assert "real todo" in tasks[0].title

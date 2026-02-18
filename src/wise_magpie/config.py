@@ -47,6 +47,8 @@ return_buffer_minutes = {return_buffer_minutes}
 [daemon]
 # Seconds between daemon poll cycles
 poll_interval = {poll_interval}
+# Minutes between automatic quota syncs from Anthropic API (0 = disabled)
+auto_sync_interval_minutes = {auto_sync_interval_minutes}
 
 [claude]
 # Fallback model for autonomous tasks (alias or full ID)
@@ -116,6 +118,7 @@ interval_hours = 168
     return_buffer_minutes=constants.RETURN_BUFFER_MINUTES,
     poll_interval=constants.POLL_INTERVAL_SECONDS,
     model=constants.DEFAULT_MODEL,
+    auto_sync_interval_minutes=constants.QUOTA_AUTO_SYNC_INTERVAL_MINUTES,
 )
 
 
@@ -128,11 +131,28 @@ def init_config(force: bool = False) -> Path:
     return CONFIG_FILE
 
 
+def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    """Recursively merge *override* into *base*, returning a new dict."""
+    result = dict(base)
+    for key, value in override.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = _deep_merge(result[key], value)
+        else:
+            result[key] = value
+    return result
+
+
 def load_config() -> dict[str, Any]:
-    """Load config from TOML file, falling back to defaults."""
+    """Load config from TOML file, merged on top of built-in defaults.
+
+    Keys present in the default config but absent from the on-disk file
+    (e.g. sections added in newer versions) are filled in automatically.
+    """
+    defaults = tomllib.loads(DEFAULT_CONFIG)
     if CONFIG_FILE.exists():
-        return tomllib.loads(CONFIG_FILE.read_text())
-    return tomllib.loads(DEFAULT_CONFIG)
+        on_disk = tomllib.loads(CONFIG_FILE.read_text())
+        return _deep_merge(defaults, on_disk)
+    return defaults
 
 
 def get(section: str, key: str, default: Any = None) -> Any:

@@ -21,7 +21,7 @@ work_dir = "."  # スキャン対象のリポジトリパス
 
 `work_dir` は `tasks scan --path` で指定したパスより優先されます（設定がある場合）。
 
-## 全 11 テンプレート一覧
+## 全 12 テンプレート一覧
 
 | # | task_type | タイトル | 説明 | デフォルト間隔 | 条件 | 難度 |
 |---|-----------|---------|------|--------------|------|------|
@@ -36,6 +36,7 @@ work_dir = "."  # スキャン対象のリポジトリパス
 | 9 | `changelog_generation` | Generate changelog from recent commits | コミット履歴から CHANGELOG を生成・更新 | — | ブランチに 5+ コミット | SIMPLE |
 | 10 | `deprecation_cleanup` | Clean up deprecated code usage | 非推奨 API の使用箇所を検出し移行 | 336h（2 週間） | コード変更あり | COMPLEX |
 | 11 | `type_coverage` | Add type annotations to untyped code | 型アノテーションのないコードに型ヒントを追加 | 168h（1 週間） | コード変更あり | MEDIUM |
+| 12 | `pentest_checklist` | Run penetration test checklist | 認証・認可・IDOR・API ファジング・アクセス制御の検証 | 720h（30 日） | コード変更あり | COMPLEX |
 
 **難度** 列はモデル自動選択時の基準です（後述「難度別モデル自動選択」を参照）。
 
@@ -139,6 +140,10 @@ interval_hours = 336
 [auto_tasks.type_coverage]
 enabled = true
 interval_hours = 168
+
+[auto_tasks.pentest_checklist]
+enabled = true
+interval_hours = 720
 ```
 
 ## 重複防止の仕組み

@@ -70,12 +70,55 @@ def quota_show() -> None:
 
 
 @quota.command("correct")
-@click.argument("remaining", type=int)
-@click.option("--model", "-m", default=None, help="Model to correct quota for (opus/sonnet/haiku)")
-def quota_correct(remaining: int, model: str | None) -> None:
-    """Manually correct remaining quota (enter value from Claude UI)."""
+@click.option(
+    "--session", type=click.IntRange(0, 100), default=None,
+    help='Percentage from Claude\'s "/usage" → "Current session X%"',
+)
+@click.option(
+    "--week-all", "week_all", type=click.IntRange(0, 100), default=None,
+    help='Percentage from Claude\'s "/usage" → "Current week (all models) X%"',
+)
+@click.option(
+    "--week-sonnet", "week_sonnet", type=click.IntRange(0, 100), default=None,
+    help='Percentage from Claude\'s "/usage" → "Current week (sonnet only) X%"',
+)
+def quota_correct(session: int | None, week_all: int | None, week_sonnet: int | None) -> None:
+    """Sync quota with values shown by Claude's /usage command.
+
+    Run /usage inside Claude, then enter the percentages here:
+
+    \b
+      wise-magpie quota correct --session 12 --week-all 28 --week-sonnet 4
+
+    Each option is independent; supply only what you want to update.
+    """
     from wise_magpie.quota.corrections import apply_correction
-    apply_correction(remaining, model=model)
+    if session is None and week_all is None and week_sonnet is None:
+        import click as _click
+        raise _click.UsageError(
+            "Provide at least one option: --session, --week-all, or --week-sonnet"
+        )
+    apply_correction(session=session, week_all=week_all, week_sonnet=week_sonnet)
+
+
+@quota.command("sync")
+def quota_sync() -> None:
+    """Fetch current quota from Anthropic API and apply automatically.
+
+    Reads ~/.claude/.credentials.json and calls the same endpoint that
+    Claude Code's /usage command uses.  No manual input required.
+    """
+    from wise_magpie.quota.corrections import auto_sync
+    if auto_sync():
+        from wise_magpie.quota.estimator import show_quota
+        show_quota()
+    else:
+        click.echo(
+            "Sync failed. Check that ~/.claude/.credentials.json exists "
+            "and you have network access.",
+            err=True,
+        )
+        raise SystemExit(1)
 
 
 @quota.command("history")

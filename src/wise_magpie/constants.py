@@ -54,6 +54,7 @@ RETURN_BUFFER_MINUTES = 15  # Stop new tasks this many minutes before predicted 
 
 # Daemon
 POLL_INTERVAL_SECONDS = 60  # How often daemon checks for work
+QUOTA_AUTO_SYNC_INTERVAL_MINUTES = 30  # How often daemon syncs quota from Anthropic API
 PID_FILE_NAME = "wise-magpie.pid"
 LOG_FILE_NAME = "wise-magpie.log"
 
