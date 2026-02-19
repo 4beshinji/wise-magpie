@@ -10,15 +10,41 @@ from wise_magpie.patterns.predictor import predict_idle_windows, predict_next_re
 from wise_magpie.patterns.schedule import get_pattern, update_patterns
 
 
-def test_is_user_active_mock():
-    with patch("wise_magpie.patterns.activity.subprocess.run") as mock_run:
-        mock_run.return_value.returncode = 0
-        mock_run.return_value.stdout = "12345\n"
-        assert is_user_active() is True
+def test_is_user_active_no_corrections():
+    """With no quota corrections, user is considered inactive."""
+    assert is_user_active() is False
 
-        mock_run.return_value.returncode = 1
-        mock_run.return_value.stdout = ""
-        assert is_user_active() is False
+
+def test_is_user_active_single_correction():
+    """With only one correction snapshot, not enough data → inactive."""
+    from wise_magpie.models import QuotaWindow
+
+    window = QuotaWindow(window_start=datetime.now(), window_hours=5, estimated_limit=225, used_count=0)
+    window.id = db.insert_quota_window(window)
+    db.insert_quota_correction(window.id, "claude-sonnet-4-5-20250929", 30, scope="session")
+    assert is_user_active() is False
+
+
+def test_is_user_active_quota_changed():
+    """When quota pct changed between syncs, user is active."""
+    from wise_magpie.models import QuotaWindow
+
+    window = QuotaWindow(window_start=datetime.now(), window_hours=5, estimated_limit=225, used_count=0)
+    window.id = db.insert_quota_window(window)
+    db.insert_quota_correction(window.id, "claude-sonnet-4-5-20250929", 30, scope="session")
+    db.insert_quota_correction(window.id, "claude-sonnet-4-5-20250929", 35, scope="session")
+    assert is_user_active() is True
+
+
+def test_is_user_active_quota_unchanged():
+    """When quota pct is the same between syncs, user is idle."""
+    from wise_magpie.models import QuotaWindow
+
+    window = QuotaWindow(window_start=datetime.now(), window_hours=5, estimated_limit=225, used_count=0)
+    window.id = db.insert_quota_window(window)
+    db.insert_quota_correction(window.id, "claude-sonnet-4-5-20250929", 30, scope="session")
+    db.insert_quota_correction(window.id, "claude-sonnet-4-5-20250929", 30, scope="session")
+    assert is_user_active() is False
 
 
 def test_get_idle_minutes_no_sessions():

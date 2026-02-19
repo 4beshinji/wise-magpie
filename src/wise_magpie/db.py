@@ -424,6 +424,23 @@ def get_latest_quota_correction(window_id: int, model: str) -> dict | None:
     }
 
 
+def get_latest_session_corrections(limit: int = 2) -> list[dict]:
+    """Return the most recent *limit* session-scope corrections (newest first).
+
+    Each dict contains ``pct_used`` (int) and ``corrected_at`` (datetime).
+    """
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT remaining, corrected_at FROM quota_corrections "
+            "WHERE scope = 'session' ORDER BY corrected_at DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    return [
+        {"pct_used": r["remaining"], "corrected_at": _parse_dt(r["corrected_at"])}
+        for r in rows
+    ]
+
+
 def get_latest_weekly_corrections() -> dict[str, dict | None]:
     """Return the most recent week_all and week_sonnet corrections (any window)."""
     result: dict[str, dict | None] = {"week_all": None, "week_sonnet": None}

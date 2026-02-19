@@ -1,7 +1,8 @@
 """User activity detection for wise-magpie.
 
-Detects whether the user is actively using Claude by checking for running
-processes, and records activity sessions in the database.
+Detects whether the user is actively using Claude by monitoring quota
+variation.  If the usage percentage reported by auto-sync has changed
+between the two most recent snapshots, the user is considered active.
 """
 
 from __future__ import annotations
@@ -19,19 +20,17 @@ _current_session_id: int | None = None
 def is_user_active() -> bool:
     """Check if the user is currently using Claude.
 
-    Returns True if any ``claude`` process is found running.
+    Compares the two most recent session-scope quota corrections recorded
+    by auto-sync.  If the usage percentage changed between them, the user
+    is actively consuming quota and is considered active.  When fewer than
+    two snapshots exist, returns ``False`` (not enough data to confirm
+    activity).
     """
-    try:
-        result = subprocess.run(
-            ["pgrep", "-f", "claude"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        # pgrep exits 0 when at least one process matches.
-        return result.returncode == 0 and bool(result.stdout.strip())
-    except (FileNotFoundError, subprocess.TimeoutExpired):
+    db.init_db()
+    corrections = db.get_latest_session_corrections(limit=2)
+    if len(corrections) < 2:
         return False
+    return corrections[0]["pct_used"] != corrections[1]["pct_used"]
 
 
 def detect_claude_processes() -> list[dict]:
