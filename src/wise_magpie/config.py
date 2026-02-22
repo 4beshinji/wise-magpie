@@ -166,3 +166,61 @@ def data_dir() -> Path:
     d = CONFIG_DIR
     d.mkdir(parents=True, exist_ok=True)
     return d
+
+
+def set_value(section: str, key: str, value: Any) -> None:
+    """Persist a single key inside *section* in the on-disk config file.
+
+    If the key already exists it is updated in-place; if the section exists
+    but the key is absent the key is appended to the section; if the section
+    itself is absent both are appended at the end of the file.
+
+    Only int, float, bool, and str values are supported (sufficient for all
+    current use cases).
+    """
+    import re
+
+    if isinstance(value, bool):
+        val_str = "true" if value else "false"
+    elif isinstance(value, str):
+        val_str = f'"{value}"'
+    else:
+        val_str = str(value)
+
+    section_header = f"[{section}]"
+
+    if not CONFIG_FILE.exists():
+        init_config()
+
+    lines = CONFIG_FILE.read_text().splitlines(keepends=True)
+    new_lines: list[str] = []
+    in_section = False
+    key_found = False
+    key_pattern = re.compile(rf"^{re.escape(key)}\s*=")
+
+    for line in lines:
+        stripped = line.strip()
+        if stripped == section_header:
+            in_section = True
+        elif stripped.startswith("[") and not stripped.startswith("[" + section + "]"):
+            if in_section and not key_found:
+                new_lines.append(f"{key} = {val_str}\n")
+                key_found = True
+            in_section = False
+
+        if in_section and not key_found and key_pattern.match(stripped):
+            new_lines.append(f"{key} = {val_str}\n")
+            key_found = True
+            continue  # discard original line
+
+        new_lines.append(line)
+
+    if not key_found:
+        if in_section:
+            new_lines.append(f"{key} = {val_str}\n")
+        else:
+            if new_lines and not new_lines[-1].endswith("\n"):
+                new_lines.append("\n")
+            new_lines.append(f"\n{section_header}\n{key} = {val_str}\n")
+
+    CONFIG_FILE.write_text("".join(new_lines))

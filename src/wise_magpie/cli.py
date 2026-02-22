@@ -129,6 +129,61 @@ def quota_history(days: int) -> None:
     show_history(days)
 
 
+_DAY_NAMES = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+_DAY_FULL = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+
+
+def _parse_day(value: str) -> int:
+    """Parse a weekday name or integer (0=Mon) into an integer 0-6."""
+    v = value.strip().lower()
+    if v in _DAY_NAMES:
+        return _DAY_NAMES.index(v)
+    if v in _DAY_FULL:
+        return _DAY_FULL.index(v)
+    try:
+        n = int(v)
+        if 0 <= n <= 6:
+            return n
+    except ValueError:
+        pass
+    raise click.BadParameter(
+        f"Expected a weekday name (mon-sun) or integer 0-6, got: {value!r}"
+    )
+
+
+@quota.command("reset-time")
+@click.option(
+    "--day", default=None,
+    help="Day of week the weekly quota resets (mon-sun or 0-6, UTC). Default: mon",
+)
+@click.option(
+    "--hour", type=click.IntRange(0, 23), default=None,
+    help="Hour (UTC, 0-23) at which the weekly quota resets. Default: 0",
+)
+def quota_reset_time(day: str | None, hour: int | None) -> None:
+    """Set the weekly quota reset schedule used for budget projection.
+
+    \b
+    Examples:
+      wise-magpie quota reset-time --day mon --hour 0
+      wise-magpie quota reset-time --day 1 --hour 9
+      wise-magpie quota reset-time --hour 6
+    """
+    from wise_magpie.config import set_value
+
+    if day is None and hour is None:
+        raise click.UsageError("Provide at least one of --day or --hour")
+
+    if day is not None:
+        day_int = _parse_day(day)
+        set_value("quota", "weekly_reset_day", day_int)
+        click.echo(f"Weekly reset day set to {_DAY_NAMES[day_int].capitalize()} ({day_int})")
+
+    if hour is not None:
+        set_value("quota", "weekly_reset_hour", hour)
+        click.echo(f"Weekly reset hour set to {hour:02d}:00 UTC")
+
+
 # --- Schedule commands (Phase 3) ---
 
 @main.group()
