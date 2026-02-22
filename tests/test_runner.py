@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import threading
 from dataclasses import dataclass
 from unittest.mock import patch
 
@@ -183,3 +184,80 @@ class TestShowStatus:
         out = capsys.readouterr().out
         assert "1 running" in out
         assert "active task" in out
+
+    @patch("wise_magpie.patterns.activity.is_user_active", return_value=False)
+    @patch("wise_magpie.patterns.activity.get_idle_minutes", return_value=42.0)
+    @patch(
+        "wise_magpie.quota.estimator.estimate_remaining",
+        return_value={
+            "remaining": 100,
+            "estimated_limit": 225,
+            "remaining_pct": 44.4,
+            "available_for_autonomous": 66,
+        },
+    )
+    def test_parallel_limit_shown(self, mock_est, mock_idle, mock_active, capsys):
+        show_status()
+        out = capsys.readouterr().out
+        assert "parallel" in out.lower()
+
+
+# ---------------------------------------------------------------------------
+# Parallel execution via threading
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class _FakeResultParallel:
+    success: bool = True
+    output: str = "done"
+    cost_usd: float = 0.01
+    input_tokens: int = 100
+    output_tokens: int = 200
+    duration_seconds: float = 0.1
+    error: str = ""
+
+
+class TestParallelExecution:
+    """Verify _run_single_task is safe to call from multiple threads concurrently."""
+
+    @patch("wise_magpie.daemon.runner.report_execution")
+    @patch("wise_magpie.daemon.runner.execute_task", return_value=_FakeResultParallel())
+    @patch("wise_magpie.daemon.runner.get_task_budget", return_value=2.0)
+    @patch("wise_magpie.daemon.runner.select_model", return_value="claude-sonnet-4-5-20250929")
+    def test_two_tasks_run_concurrently(
+        self, mock_model, mock_budget, mock_exec, mock_report, tmp_path
+    ):
+        """Two tasks launched in separate threads both complete successfully."""
+        tasks = []
+        for i in range(2):
+            t = Task(
+                title=f"parallel task {i}",
+                description="",
+                source=TaskSource.MANUAL,
+                status=TaskStatus.PENDING,
+                work_dir=str(tmp_path),
+            )
+            t.id = db.insert_task(t)
+            tasks.append(t)
+
+        errors: list[Exception] = []
+
+        def run(task: Task) -> None:
+            try:
+                _run_single_task(task)
+            except Exception as e:
+                errors.append(e)
+
+        threads = [threading.Thread(target=run, args=(t,)) for t in tasks]
+        for th in threads:
+            th.start()
+        for th in threads:
+            th.join(timeout=10)
+
+        assert not errors, f"Thread errors: {errors}"
+        assert mock_exec.call_count == 2
+
+        for task in tasks:
+            updated = db.get_task(task.id)
+            assert updated.status == TaskStatus.COMPLETED

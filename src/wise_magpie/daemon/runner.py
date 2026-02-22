@@ -6,13 +6,14 @@ import logging
 import os
 import signal
 import sys
+import threading
 from datetime import datetime
 from pathlib import Path
 
 import click
 
 from wise_magpie import config, constants, db
-from wise_magpie.daemon.scheduler import should_execute
+from wise_magpie.daemon.scheduler import get_parallel_limit, should_execute
 from wise_magpie.daemon.signals import SignalHandler
 from wise_magpie.models import Task, TaskStatus
 from wise_magpie.patterns.activity import record_activity
@@ -145,7 +146,7 @@ def _run_single_task(task: Task) -> None:
 
 
 def _daemon_loop(handler: SignalHandler) -> None:
-    """Main daemon loop."""
+    """Main daemon loop with parallel task execution."""
     db.init_db()
     cfg = config.load_config()
     poll_interval = cfg.get("daemon", {}).get("poll_interval", constants.POLL_INTERVAL_SECONDS)
@@ -156,12 +157,13 @@ def _daemon_loop(handler: SignalHandler) -> None:
     logger.info("Daemon started (PID %d)", os.getpid())
 
     last_sync_at = 0.0  # force sync on first iteration
+    active_threads: list[threading.Thread] = []
 
     import time as _time
 
     while not handler.should_stop:
         try:
-            # Periodically auto-sync quota from Anthropic API
+            # Periodically auto-sync quota and recompute weekly budget limit
             now = _time.monotonic()
             if now - last_sync_at >= sync_interval:
                 try:
@@ -172,23 +174,51 @@ def _daemon_loop(handler: SignalHandler) -> None:
                         logger.debug("Quota auto-sync skipped (no credentials or network)")
                 except Exception:
                     logger.debug("Quota auto-sync failed", exc_info=True)
+
+                try:
+                    from wise_magpie.quota.weekly_budget import update_weekly_limit
+                    update_weekly_limit()
+                except Exception:
+                    logger.debug("Weekly budget update failed", exc_info=True)
+
                 last_sync_at = now
 
             # Record activity state
             record_activity()
 
-            # Check if we should execute
-            should_run, reason = should_execute()
+            # Reap finished threads
+            active_threads = [t for t in active_threads if t.is_alive()]
 
-            if should_run:
+            # Fill all available parallel slots in a single poll cycle.
+            # Pre-marking each task as RUNNING before the next should_execute()
+            # call ensures the DB reflects the true running count immediately,
+            # preventing duplicate dispatch of the same task.
+            while True:
+                should_run, reason = should_execute()
+                if not should_run:
+                    logger.debug(f"Not executing: {reason}")
+                    break
+
                 task = get_next_task()
-                if task:
-                    logger.info(f"Scheduling task: {reason}")
-                    _run_single_task(task)
-                else:
+                if not task:
                     logger.debug("should_execute=True but no task available")
-            else:
-                logger.debug(f"Not executing: {reason}")
+                    break
+
+                # Mark RUNNING in DB before spawning thread so the next
+                # should_execute() call sees the updated running count.
+                task.status = TaskStatus.RUNNING
+                task.started_at = datetime.now()
+                db.update_task(task)
+
+                logger.info(f"Scheduling task #{task.id}: {task.title} | {reason}")
+                t = threading.Thread(
+                    target=_run_single_task,
+                    args=(task,),
+                    daemon=True,
+                    name=f"task-{task.id}",
+                )
+                t.start()
+                active_threads.append(t)
 
         except Exception:
             logger.exception("Error in daemon loop")
@@ -197,6 +227,9 @@ def _daemon_loop(handler: SignalHandler) -> None:
         handler.wait(poll_interval)
 
     logger.info("Daemon shutting down")
+    # Give running tasks a chance to finish gracefully
+    for t in active_threads:
+        t.join(timeout=300)
 
 
 def start_daemon(foreground: bool) -> None:
@@ -286,6 +319,15 @@ def show_status() -> None:
         click.echo(f"         {est['available_for_autonomous']} available for autonomous use")
     except Exception:
         click.echo("Quota:   no data yet")
+
+    # Parallel limit
+    try:
+        from wise_magpie.quota.weekly_budget import get_weekly_parallel_limit
+        limit = get_parallel_limit()
+        weekly = get_weekly_parallel_limit()
+        click.echo(f"Parallel: up to {limit} concurrent tasks (weekly budget cap: {weekly})")
+    except Exception:
+        pass
 
     # Task status
     running = db.get_tasks_by_status(TaskStatus.RUNNING)
