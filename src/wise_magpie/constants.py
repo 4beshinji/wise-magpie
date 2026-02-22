@@ -54,12 +54,13 @@ RETURN_BUFFER_MINUTES = 15  # Stop new tasks this many minutes before predicted 
 
 # Daemon
 POLL_INTERVAL_SECONDS = 60  # How often daemon checks for work
-MAX_PARALLEL_TASKS = 10  # Maximum concurrent autonomous tasks
+MAX_PARALLEL_TASKS = 30          # Hard upper bound on concurrent autonomous tasks
 
 # Weekly quota budget
-WEEKLY_QUOTA_TARGET_PCT = 90.0  # Target max weekly usage % at reset time
-WEEKLY_RESET_DAY = 0            # Day weekly quota resets (0=Mon … 6=Sun, UTC)
-WEEKLY_RESET_HOUR = 0           # Hour (UTC) at which weekly quota resets
+WEEKLY_QUOTA_TARGET_PCT = 90.0   # Target max weekly usage % at reset time
+WEEKLY_RESET_DAY = 0             # Day weekly quota resets (0=Mon … 6=Sun, UTC)
+WEEKLY_RESET_HOUR = 0            # Hour (UTC) at which weekly quota resets
+WEEKLY_INITIAL_PARALLEL_LIMIT = 10  # Limit before two measurements exist to compute rate
 QUOTA_AUTO_SYNC_INTERVAL_MINUTES = 30  # How often daemon syncs quota from Anthropic API
 PID_FILE_NAME = "wise-magpie.pid"
 LOG_FILE_NAME = "wise-magpie.log"

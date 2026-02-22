@@ -163,8 +163,12 @@ def update_weekly_limit() -> int:
     _last_checked_at = now
 
     if rate_per_hour is None or rate_per_hour <= 0:
-        # No usable rate yet (first call, week just reset, or no activity)
-        _weekly_parallel_limit = cap
+        # No usable rate yet (first call, week just reset, or no activity).
+        # Use a conservative initial limit until two measurements are available.
+        initial = cfg.get("quota", {}).get(
+            "weekly_initial_parallel_limit", constants.WEEKLY_INITIAL_PARALLEL_LIMIT
+        )
+        _weekly_parallel_limit = min(initial, cap)
     else:
         _weekly_parallel_limit = compute_weekly_parallel_limit(
             week_pct=week_pct,

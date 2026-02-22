@@ -117,7 +117,7 @@ class TestUpdateWeeklyLimit:
             result = update_weekly_limit()
         assert result == constants.MAX_PARALLEL_TASKS
 
-    def test_first_call_no_rate_returns_cap(self):
+    def test_first_call_no_rate_returns_initial_limit(self):
         self._reset_state()
         snapshot = {"week_all_pct": 30.0, "week_sonnet_pct": None, "five_hour_pct": 0.0,
                     "five_hour_resets_at": None}
@@ -125,8 +125,8 @@ class TestUpdateWeeklyLimit:
             with patch("wise_magpie.quota.weekly_budget.get_hours_until_weekly_reset",
                        return_value=100.0):
                 result = update_weekly_limit()
-        # First call → no delta → returns cap
-        assert result == constants.MAX_PARALLEL_TASKS
+        # First call → no delta → returns WEEKLY_INITIAL_PARALLEL_LIMIT, not the hard cap
+        assert result == constants.WEEKLY_INITIAL_PARALLEL_LIMIT
 
     def test_second_call_computes_limit(self):
         self._reset_state()
