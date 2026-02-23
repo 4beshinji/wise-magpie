@@ -106,9 +106,20 @@ def list_tasks(status_filter: str | None = None) -> list[Task]:
 
 
 def _configured_paths(explicit_path: str) -> list[str]:
-    """Return paths to scan: configured work_dirs if set, else the explicit path."""
+    """Return paths to scan.
+
+    Priority: work_dir_parent (auto-discover git repos) > work_dirs (explicit
+    list) > work_dir / explicit_path.
+    """
+    from pathlib import Path
     from wise_magpie import config as _config
+    from wise_magpie.tasks.sources.auto_tasks import _discover_git_repos
     cfg = _config.load_config().get("auto_tasks", {})
+    parent = cfg.get("work_dir_parent", "")
+    if parent:
+        repos = _discover_git_repos(str(Path(parent).expanduser()))
+        if repos:
+            return repos
     work_dirs: list[str] = cfg.get("work_dirs", [])
     if work_dirs:
         return work_dirs

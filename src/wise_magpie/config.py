@@ -61,7 +61,9 @@ extra_flags = []
 [auto_tasks]
 # Automatically generate routine maintenance tasks during scan
 enabled = false
-# Single target directory (used when work_dirs is empty)
+# Auto-discover all git repos directly under this directory (highest priority)
+work_dir_parent = ""
+# Single target directory (used when work_dir_parent and work_dirs are empty)
 work_dir = "."
 # Multiple target directories; if non-empty, work_dir is ignored
 work_dirs = []

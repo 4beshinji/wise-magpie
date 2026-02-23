@@ -298,10 +298,25 @@ def _scan_one(path: str, cfg: dict, prefix: str = "") -> list[Task]:
     return tasks
 
 
+def _discover_git_repos(parent: str) -> list[str]:
+    """Return immediate subdirectories of *parent* that are git repositories."""
+    import os
+    from pathlib import Path as _Path
+    repos = []
+    try:
+        for entry in sorted(os.scandir(parent), key=lambda e: e.name):
+            if entry.is_dir() and (_Path(entry.path) / ".git").exists():
+                repos.append(entry.path)
+    except OSError:
+        pass
+    return repos
+
+
 def scan(path: str) -> list[Task]:
     """Check all enabled auto-task templates and return tasks whose conditions are met.
 
-    Supports multiple target directories via ``work_dirs`` in config.
+    Supports multiple target directories via ``work_dirs`` or auto-discovery
+    via ``work_dir_parent`` in config.
     Each returned task has ``source=TaskSource.AUTO_TASK`` and
     ``source_ref="{task_type}:{YYYY-MM-DD}"``.  The caller's dedup logic
     (matching on ``(source, source_ref)``) ensures only one task per type
@@ -311,8 +326,14 @@ def scan(path: str) -> list[Task]:
     if not cfg.get("enabled", False):
         return []
 
-    # Support work_dirs list (multiple projects) or fall back to work_dir / path
-    work_dirs: list[str] = cfg.get("work_dirs", [])
+    # Priority: work_dir_parent (auto-discover) > work_dirs (explicit list) > work_dir / path
+    work_dirs: list[str] = []
+    parent = cfg.get("work_dir_parent", "")
+    if parent:
+        from pathlib import Path as _Path
+        work_dirs = _discover_git_repos(str(_Path(parent).expanduser()))
+    if not work_dirs:
+        work_dirs = cfg.get("work_dirs", [])
     if not work_dirs:
         single = cfg.get("work_dir", path) or path
         work_dirs = [single]

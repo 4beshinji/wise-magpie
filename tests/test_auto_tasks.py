@@ -11,6 +11,7 @@ from wise_magpie.tasks.sources.auto_tasks import (
     BUILTIN_TEMPLATES,
     _branch_commit_count,
     _check_template,
+    _discover_git_repos,
     _has_code_changes_since,
     _has_commits_since,
     _interval_elapsed,
@@ -430,6 +431,55 @@ def test_scan_work_dirs_multi_project():
     work_dirs = {t.work_dir for t in tasks}
     assert "/repo/alpha" in work_dirs
     assert "/repo/beta" in work_dirs
+
+
+def test_discover_git_repos(tmp_path):
+    """_discover_git_repos should return only immediate subdirs with .git."""
+    # Create two git repos and one non-repo
+    (tmp_path / "repo_a" / ".git").mkdir(parents=True)
+    (tmp_path / "repo_b" / ".git").mkdir(parents=True)
+    (tmp_path / "not_a_repo").mkdir()
+
+    found = _discover_git_repos(str(tmp_path))
+    assert sorted(found) == sorted([
+        str(tmp_path / "repo_a"),
+        str(tmp_path / "repo_b"),
+    ])
+
+
+def test_discover_git_repos_empty(tmp_path):
+    """Empty parent directory returns empty list."""
+    assert _discover_git_repos(str(tmp_path)) == []
+
+
+def test_discover_git_repos_nonexistent():
+    """Non-existent parent directory returns empty list (no exception)."""
+    assert _discover_git_repos("/nonexistent/path/xyz") == []
+
+
+def test_scan_work_dir_parent():
+    """work_dir_parent triggers auto-discovery of git repos."""
+    cfg = {"auto_tasks": {"enabled": True, "work_dir_parent": "/parent"}}
+
+    calls: list[str] = []
+
+    def fake_check(template, path, c):
+        calls.append(path)
+        return False
+
+    with (
+        patch("wise_magpie.tasks.sources.auto_tasks.config") as mock_cfg,
+        patch("wise_magpie.tasks.sources.auto_tasks._check_template", side_effect=fake_check),
+        patch(
+            "wise_magpie.tasks.sources.auto_tasks._discover_git_repos",
+            return_value=["/parent/proj_a", "/parent/proj_b"],
+        ),
+    ):
+        mock_cfg.load_config.return_value = cfg
+        scan("/ignored")
+
+    assert "/parent/proj_a" in calls
+    assert "/parent/proj_b" in calls
 
 
 def test_scan_work_dirs_source_ref_includes_project():
