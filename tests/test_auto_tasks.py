@@ -395,6 +395,68 @@ def test_scan_uses_work_dir_from_config():
     assert all(p == "/custom/repo" for p in calls)
 
 
+def test_scan_work_dirs_multi_project():
+    """When work_dirs is set, scan() should generate tasks for each directory."""
+    cfg = {
+        "auto_tasks": {
+            "enabled": True,
+            "work_dirs": ["/repo/alpha", "/repo/beta"],
+        }
+    }
+
+    calls: list[str] = []
+
+    def fake_check(template, path, c):
+        calls.append(path)
+        return template.task_type == "run_tests"
+
+    with (
+        patch("wise_magpie.tasks.sources.auto_tasks.config") as mock_cfg,
+        patch("wise_magpie.tasks.sources.auto_tasks._check_template", side_effect=fake_check),
+    ):
+        mock_cfg.load_config.return_value = cfg
+        tasks = scan("/ignored/path")
+
+    # Should have scanned both dirs
+    assert "/repo/alpha" in calls
+    assert "/repo/beta" in calls
+    # Two tasks (one run_tests per dir)
+    assert len(tasks) == 2
+    # Titles should have project prefix
+    titles = {t.title for t in tasks}
+    assert "[alpha] Run test suite" in titles
+    assert "[beta] Run test suite" in titles
+    # work_dir should be set to each project dir
+    work_dirs = {t.work_dir for t in tasks}
+    assert "/repo/alpha" in work_dirs
+    assert "/repo/beta" in work_dirs
+
+
+def test_scan_work_dirs_source_ref_includes_project():
+    """source_ref for multi-dir scan should include project name for per-project dedup."""
+    from datetime import date
+
+    cfg = {
+        "auto_tasks": {
+            "enabled": True,
+            "work_dirs": ["/repo/alpha", "/repo/beta"],
+        }
+    }
+
+    with (
+        patch("wise_magpie.tasks.sources.auto_tasks.config") as mock_cfg,
+        patch("wise_magpie.tasks.sources.auto_tasks._check_template", return_value=True),
+    ):
+        mock_cfg.load_config.return_value = cfg
+        tasks = scan("/tmp")
+
+    today = date.today().isoformat()
+    for t in tasks:
+        # source_ref should include project name, e.g. "run_tests:alpha:2026-02-22"
+        assert today in t.source_ref
+        assert ":" in t.source_ref
+
+
 # ---------------------------------------------------------------------------
 # New template condition tests
 # ---------------------------------------------------------------------------

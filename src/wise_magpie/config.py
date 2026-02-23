@@ -61,7 +61,10 @@ extra_flags = []
 [auto_tasks]
 # Automatically generate routine maintenance tasks during scan
 enabled = false
+# Single target directory (used when work_dirs is empty)
 work_dir = "."
+# Multiple target directories; if non-empty, work_dir is ignored
+work_dirs = []
 
 [auto_tasks.run_tests]
 enabled = true

@@ -105,17 +105,33 @@ def list_tasks(status_filter: str | None = None) -> list[Task]:
     return tasks
 
 
+def _configured_paths(explicit_path: str) -> list[str]:
+    """Return paths to scan: configured work_dirs if set, else the explicit path."""
+    from wise_magpie import config as _config
+    cfg = _config.load_config().get("auto_tasks", {})
+    work_dirs: list[str] = cfg.get("work_dirs", [])
+    if work_dirs:
+        return work_dirs
+    # Fall back to work_dir or the explicit path argument
+    single = cfg.get("work_dir", explicit_path) or explicit_path
+    return [single]
+
+
 def scan_tasks(path: str) -> int:
     """Run all source scanners, deduplicate, insert new tasks, and reprioritize.
 
+    When ``[auto_tasks] work_dirs`` is configured, scans all listed directories.
     Returns the number of newly inserted tasks.
     """
     db.init_db()
 
+    paths = _configured_paths(path)
+
     # Collect candidates from every scanner
     found: list[Task] = []
-    found.extend(git_todos.scan(path))
-    found.extend(queue_file.scan(path))
+    for p in paths:
+        found.extend(git_todos.scan(p))
+        found.extend(queue_file.scan(p))
     found.extend(auto_tasks.scan(path))
 
     click.echo(f"Scanned: found {len(found)} candidate task(s).")

@@ -275,9 +275,33 @@ def _check_template(
 # Public API
 # ---------------------------------------------------------------------------
 
+def _scan_one(path: str, cfg: dict, prefix: str = "") -> list[Task]:
+    """Scan a single directory and return auto-tasks whose conditions are met."""
+    today = date.today().isoformat()
+    templates = _template_map()
+    tasks: list[Task] = []
+    for template in templates.values():
+        if not _check_template(template, path, cfg):
+            continue
+        title = f"[{prefix}] {template.title}" if prefix else template.title
+        source_ref = f"{template.task_type}:{today}" if not prefix else f"{template.task_type}:{prefix}:{today}"
+        tasks.append(
+            Task(
+                title=title,
+                description=template.description,
+                source=TaskSource.AUTO_TASK,
+                source_ref=source_ref,
+                work_dir=path,
+                created_at=datetime.now(),
+            )
+        )
+    return tasks
+
+
 def scan(path: str) -> list[Task]:
     """Check all enabled auto-task templates and return tasks whose conditions are met.
 
+    Supports multiple target directories via ``work_dirs`` in config.
     Each returned task has ``source=TaskSource.AUTO_TASK`` and
     ``source_ref="{task_type}:{YYYY-MM-DD}"``.  The caller's dedup logic
     (matching on ``(source, source_ref)``) ensures only one task per type
@@ -287,23 +311,19 @@ def scan(path: str) -> list[Task]:
     if not cfg.get("enabled", False):
         return []
 
-    work_dir = cfg.get("work_dir", path) or path
-    today = date.today().isoformat()
-    templates = _template_map()
+    # Support work_dirs list (multiple projects) or fall back to work_dir / path
+    work_dirs: list[str] = cfg.get("work_dirs", [])
+    if not work_dirs:
+        single = cfg.get("work_dir", path) or path
+        work_dirs = [single]
 
     tasks: list[Task] = []
-    for template in templates.values():
-        if not _check_template(template, work_dir, cfg):
-            continue
-
-        tasks.append(
-            Task(
-                title=template.title,
-                description=template.description,
-                source=TaskSource.AUTO_TASK,
-                source_ref=f"{template.task_type}:{today}",
-                created_at=datetime.now(),
-            )
-        )
+    if len(work_dirs) == 1:
+        tasks.extend(_scan_one(work_dirs[0], cfg, prefix=""))
+    else:
+        import os
+        for wd in work_dirs:
+            prefix = os.path.basename(wd.rstrip("/"))
+            tasks.extend(_scan_one(wd, cfg, prefix=prefix))
 
     return tasks
