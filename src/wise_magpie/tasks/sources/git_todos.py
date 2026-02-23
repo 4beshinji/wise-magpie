@@ -23,6 +23,9 @@ _TODO_RE = re.compile(
 # Directory names that are considered test directories.
 _TEST_DIRS: frozenset[str] = frozenset({"tests", "test", "spec", "__tests__"})
 
+# Directory names that contain documentation (not executable code).
+_DOC_DIRS: frozenset[str] = frozenset({"docs", "doc", "documentation"})
+
 # Filename patterns that indicate test files.
 _TEST_FILE_PATTERNS: tuple[str, ...] = (
     "test_*.py",
@@ -33,6 +36,14 @@ _TEST_FILE_PATTERNS: tuple[str, ...] = (
     "*.test.ts",
     "*.spec.js",
     "*.spec.ts",
+)
+
+# Filename patterns that indicate documentation/markup files.
+_DOC_FILE_PATTERNS: tuple[str, ...] = (
+    "*.md",
+    "*.rst",
+    "*.txt",
+    "*.adoc",
 )
 
 
@@ -47,6 +58,17 @@ def _is_test_file(rel_path: str) -> bool:
     return any(fnmatch.fnmatch(name, pattern) for pattern in _TEST_FILE_PATTERNS)
 
 
+def _is_doc_file(rel_path: str) -> bool:
+    """Return True if *rel_path* is a documentation file that should be excluded."""
+    parts = Path(rel_path).parts
+    # Any parent directory component matches a doc directory name
+    if any(part in _DOC_DIRS for part in parts[:-1]):
+        return True
+    # Filename matches a doc file pattern
+    name = parts[-1]
+    return any(fnmatch.fnmatch(name, pattern) for pattern in _DOC_FILE_PATTERNS)
+
+
 def _git_tracked_files(path: str) -> list[str]:
     """Return list of tracked non-test files via ``git ls-files``."""
     result = subprocess.run(
@@ -59,7 +81,7 @@ def _git_tracked_files(path: str) -> list[str]:
         return []
     return [
         f for f in result.stdout.splitlines()
-        if f.strip() and not _is_test_file(f)
+        if f.strip() and not _is_test_file(f) and not _is_doc_file(f)
     ]
 
 

@@ -79,6 +79,36 @@ class TestIsTestFile:
         assert _is_test_file("src/module/helpers.py") is False
 
 
+class TestIsDocFile:
+    def test_docs_directory(self):
+        from wise_magpie.tasks.sources.git_todos import _is_doc_file
+        assert _is_doc_file("docs/README.md") is True
+
+    def test_doc_directory(self):
+        from wise_magpie.tasks.sources.git_todos import _is_doc_file
+        assert _is_doc_file("doc/guide.rst") is True
+
+    def test_markdown_file_at_root(self):
+        from wise_magpie.tasks.sources.git_todos import _is_doc_file
+        assert _is_doc_file("README.md") is True
+
+    def test_rst_file(self):
+        from wise_magpie.tasks.sources.git_todos import _is_doc_file
+        assert _is_doc_file("CHANGELOG.rst") is True
+
+    def test_txt_file(self):
+        from wise_magpie.tasks.sources.git_todos import _is_doc_file
+        assert _is_doc_file("notes.txt") is True
+
+    def test_normal_python_file(self):
+        from wise_magpie.tasks.sources.git_todos import _is_doc_file
+        assert _is_doc_file("src/utils.py") is False
+
+    def test_nested_python_file(self):
+        from wise_magpie.tasks.sources.git_todos import _is_doc_file
+        assert _is_doc_file("src/module/helpers.py") is False
+
+
 class TestScan:
     def test_empty_repo(self, git_repo: Path):
         tasks = scan(str(git_repo))
