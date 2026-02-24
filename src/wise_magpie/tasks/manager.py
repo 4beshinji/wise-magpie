@@ -40,7 +40,14 @@ def _truncate(text: str, width: int = 50) -> str:
 # Public API
 # ---------------------------------------------------------------------------
 
-def add_task(title: str, description: str = "", priority: float = 0.0, model: str = "") -> Task:
+def add_task(
+    title: str,
+    description: str = "",
+    priority: float = 0.0,
+    model: str = "",
+    max_retries: int = 0,
+    depends_on: list[int] | None = None,
+) -> Task:
     """Create a new manual task, insert it into the DB, and echo confirmation."""
     db.init_db()
 
@@ -50,6 +57,8 @@ def add_task(title: str, description: str = "", priority: float = 0.0, model: st
         source=TaskSource.MANUAL,
         priority=priority,
         model=model,
+        max_retries=max_retries,
+        depends_on=depends_on if depends_on is not None else [],
         created_at=datetime.now(),
     )
     if priority == 0.0:
@@ -190,11 +199,35 @@ def remove_task(task_id: int) -> bool:
 
 
 def get_next_task() -> Task | None:
-    """Return the highest-priority pending task, or ``None``."""
+    """Return the highest-priority pending task that is ready to run.
+
+    A task is ready when:
+    - Its ``retry_after`` timestamp (if set) is not in the future.
+    - All task IDs listed in ``depends_on`` have status COMPLETED.
+    """
     db.init_db()
 
     pending = db.get_tasks_by_status(TaskStatus.PENDING)
     if not pending:
         return None
-    # get_tasks_by_status already sorts by priority DESC
-    return pending[0]
+
+    now = datetime.now()
+    for task in pending:  # already sorted by priority DESC
+        # Skip tasks still within their retry backoff window
+        if task.retry_after is not None and task.retry_after > now:
+            continue
+
+        # Skip tasks whose dependencies are not yet fully completed
+        if task.depends_on:
+            deps_met = True
+            for dep_id in task.depends_on:
+                dep_task = db.get_task(dep_id)
+                if dep_task is None or dep_task.status != TaskStatus.COMPLETED:
+                    deps_met = False
+                    break
+            if not deps_met:
+                continue
+
+        return task
+
+    return None

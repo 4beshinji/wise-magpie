@@ -64,6 +64,12 @@ class Task:
     created_at: datetime = field(default_factory=datetime.now)
     started_at: datetime | None = None
     completed_at: datetime | None = None
+    # Retry support
+    max_retries: int = 0          # 0 = no retry
+    retry_count: int = 0          # current retry attempt
+    retry_after: datetime | None = None  # earliest time for next retry
+    # DAG dependency support
+    depends_on: list[int] = field(default_factory=list)  # task IDs this task depends on
 
 
 @dataclass

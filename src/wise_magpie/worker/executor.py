@@ -32,9 +32,10 @@ def build_claude_command(
 ) -> list[str]:
     """Build the claude CLI command."""
     cfg = config.load_config()
-    model = model or cfg.get("claude", {}).get("model", constants.DEFAULT_MODEL)
+    claude_cfg = cfg.get("claude", {})
+    model = model or claude_cfg.get("model", constants.DEFAULT_MODEL)
     max_budget = max_budget_usd or cfg.get("budget", {}).get("max_task_usd", constants.MAX_TASK_BUDGET_USD)
-    flags = extra_flags or cfg.get("claude", {}).get("extra_flags", [])
+    flags = extra_flags or claude_cfg.get("extra_flags", [])
 
     cmd = [
         "claude",
@@ -43,6 +44,15 @@ def build_claude_command(
         "--max-turns", "50",
         f"--max-budget-usd={max_budget}",
     ]
+
+    # Add fallback model if configured (claude uses it when primary is rate-limited).
+    fallback = claude_cfg.get("fallback_model", "sonnet")
+    if fallback:
+        # Resolve alias → full model ID
+        resolved = constants.MODEL_ALIASES.get(fallback, fallback)
+        if resolved != model:  # no point falling back to the same model
+            cmd.extend(["--fallback-model", resolved])
+
     for flag in flags:
         cmd.append(flag)
     return cmd

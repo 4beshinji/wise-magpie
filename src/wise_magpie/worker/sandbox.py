@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+
+logger = logging.getLogger("wise-magpie")
 
 
 @dataclass
@@ -134,3 +137,58 @@ def merge_branch(repo_path: str, branch_name: str, target_branch: str) -> None:
 def delete_branch(repo_path: str, branch_name: str) -> None:
     """Delete a work branch."""
     _run_git(["branch", "-D", branch_name], cwd=repo_path)
+
+
+def auto_create_pr(ctx: SandboxContext, task_title: str, result_summary: str) -> str | None:
+    """Create a GitHub Pull Request for the completed work branch.
+
+    Requires the ``gh`` CLI to be installed and authenticated.  Returns the
+    PR URL on success, or ``None`` if the branch has no commits relative to
+    the base branch (nothing to PR) or if ``gh`` is unavailable.
+    """
+    # Check that the branch actually has commits relative to the base.
+    try:
+        log = get_branch_log(ctx.repo_path, ctx.branch_name, ctx.original_branch)
+    except subprocess.CalledProcessError:
+        return None
+
+    if not log.strip():
+        logger.debug("auto_create_pr: no commits on branch, skipping PR creation")
+        return None
+
+    # Truncate result_summary for PR body (GitHub has a limit).
+    body_summary = result_summary[:3000] if result_summary else "(no summary)"
+    pr_body = (
+        f"Autonomous task completed by wise-magpie.\n\n"
+        f"## Summary\n{body_summary}\n\n"
+        f"🤖 Generated with [wise-magpie](https://github.com/anthropics/claude-code)"
+    )
+
+    try:
+        result = subprocess.run(
+            [
+                "gh", "pr", "create",
+                "--title", f"[wise-magpie] {task_title}",
+                "--body", pr_body,
+                "--base", ctx.original_branch,
+                "--head", ctx.branch_name,
+            ],
+            cwd=ctx.repo_path,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+    except FileNotFoundError:
+        logger.warning("auto_create_pr: gh CLI not found; skipping PR creation")
+        return None
+    except subprocess.TimeoutExpired:
+        logger.warning("auto_create_pr: gh pr create timed out")
+        return None
+
+    if result.returncode == 0:
+        pr_url = result.stdout.strip()
+        logger.info(f"  PR created: {pr_url}")
+        return pr_url
+
+    logger.warning(f"  gh pr create failed: {result.stderr.strip()}")
+    return None

@@ -12,16 +12,21 @@ from pathlib import Path
 
 import click
 
+from datetime import timedelta
+
 from wise_magpie import config, constants, db
 from wise_magpie.daemon.scheduler import get_parallel_limit, should_execute
 from wise_magpie.daemon.signals import SignalHandler
 from wise_magpie.models import Task, TaskStatus
+
+# Exponential backoff base delay in seconds: 60s → 120s → 240s → …
+_RETRY_BACKOFF_BASE = 60
 from wise_magpie.patterns.activity import record_activity
 from wise_magpie.tasks.manager import get_next_task
 from wise_magpie.tasks.model_selector import select_model
 from wise_magpie.worker.executor import execute_task
 from wise_magpie.worker.monitor import check_budget_available, get_task_budget, report_execution
-from wise_magpie.worker.sandbox import cleanup_sandbox, create_sandbox
+from wise_magpie.worker.sandbox import auto_create_pr, cleanup_sandbox, create_sandbox
 
 logger = logging.getLogger("wise-magpie")
 
@@ -115,13 +120,61 @@ def _run_single_task(task: Task) -> None:
         if result.success:
             task.status = TaskStatus.COMPLETED
             task.result_summary = result.output[:2000]  # Truncate for DB
+            task.completed_at = datetime.now()
             logger.info(f"  Task #{task.id} completed successfully")
-        else:
-            task.status = TaskStatus.FAILED
-            task.result_summary = f"Error: {result.error}"
-            logger.warning(f"  Task #{task.id} failed: {result.error}")
 
-        task.completed_at = datetime.now()
+            cfg = config.load_config()
+            review_cfg = cfg.get("review", {})
+
+            # Optionally run AI code review on the completed branch.
+            if sandbox_ctx and review_cfg.get("ai_review", False):
+                from wise_magpie.worker.ai_review import format_review_summary, review_branch
+                review_model = review_cfg.get("ai_review_model", "claude-sonnet-4-6")
+                try:
+                    review = review_branch(
+                        task.id, task.title,
+                        sandbox_ctx.repo_path, sandbox_ctx.branch_name,
+                        sandbox_ctx.original_branch, model=review_model,
+                    )
+                    task.result_summary = (
+                        task.result_summary + f"\n\n## AI Review\n{format_review_summary(review)}"
+                    )
+                    db.update_task(task)
+                    logger.info(
+                        f"  AI review: verdict={review.get('verdict')}, "
+                        f"score={review.get('score')}"
+                    )
+                except Exception:
+                    logger.debug("AI review failed", exc_info=True)
+
+            # Optionally create a PR for the completed work branch.
+            if sandbox_ctx and review_cfg.get("auto_pr", False):
+                pr_url = auto_create_pr(sandbox_ctx, task.title, task.result_summary)
+                if pr_url:
+                    task.result_summary = f"PR: {pr_url}\n\n{task.result_summary}"
+                    db.update_task(task)
+        else:
+            task.retry_count += 1
+            if task.retry_count <= task.max_retries:
+                # Re-queue with exponential backoff
+                delay = _RETRY_BACKOFF_BASE * (2 ** (task.retry_count - 1))
+                task.retry_after = datetime.now() + timedelta(seconds=delay)
+                task.status = TaskStatus.PENDING
+                task.work_branch = ""  # fresh branch on retry
+                task.result_summary = (
+                    f"Retry {task.retry_count}/{task.max_retries} "
+                    f"(after {delay}s): {result.error}"
+                )
+                logger.warning(
+                    f"  Task #{task.id} failed (attempt {task.retry_count}/"
+                    f"{task.max_retries}); retry in {delay}s"
+                )
+            else:
+                task.status = TaskStatus.FAILED
+                task.result_summary = f"Error: {result.error}"
+                task.completed_at = datetime.now()
+                logger.warning(f"  Task #{task.id} failed: {result.error}")
+
         db.update_task(task)
 
         report_execution(
@@ -131,11 +184,27 @@ def _run_single_task(task: Task) -> None:
         )
 
     except Exception as e:
-        task.status = TaskStatus.FAILED
-        task.result_summary = f"Exception: {e}"
-        task.completed_at = datetime.now()
-        db.update_task(task)
-        logger.exception(f"  Task #{task.id} raised exception")
+        task.retry_count += 1
+        if task.retry_count <= task.max_retries:
+            delay = _RETRY_BACKOFF_BASE * (2 ** (task.retry_count - 1))
+            task.retry_after = datetime.now() + timedelta(seconds=delay)
+            task.status = TaskStatus.PENDING
+            task.work_branch = ""
+            task.result_summary = (
+                f"Retry {task.retry_count}/{task.max_retries} "
+                f"(after {delay}s): {e}"
+            )
+            logger.warning(
+                f"  Task #{task.id} raised exception (attempt {task.retry_count}/"
+                f"{task.max_retries}); retry in {delay}s",
+                exc_info=True,
+            )
+        else:
+            task.status = TaskStatus.FAILED
+            task.result_summary = f"Exception: {e}"
+            task.completed_at = datetime.now()
+            db.update_task(task)
+            logger.exception(f"  Task #{task.id} raised exception")
     finally:
         # Return to original branch (keep the work branch for review)
         if sandbox_ctx:

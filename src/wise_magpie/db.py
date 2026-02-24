@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime
@@ -56,7 +57,11 @@ CREATE TABLE IF NOT EXISTS tasks (
     result_summary TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
     started_at TEXT,
-    completed_at TEXT
+    completed_at TEXT,
+    max_retries INTEGER NOT NULL DEFAULT 0,
+    retry_count INTEGER NOT NULL DEFAULT 0,
+    retry_after TEXT,
+    depends_on TEXT NOT NULL DEFAULT '[]'
 );
 
 CREATE TABLE IF NOT EXISTS quota_corrections (
@@ -135,6 +140,20 @@ def _migrate(conn: sqlite3.Connection) -> None:
     cols = {row[1] for row in conn.execute("PRAGMA table_info(tasks)").fetchall()}
     if "model" not in cols:
         conn.execute("ALTER TABLE tasks ADD COLUMN model TEXT NOT NULL DEFAULT ''")
+
+    # Add retry columns to tasks if missing (added after initial release).
+    task_cols = {row[1] for row in conn.execute("PRAGMA table_info(tasks)").fetchall()}
+    if "max_retries" not in task_cols:
+        conn.execute("ALTER TABLE tasks ADD COLUMN max_retries INTEGER NOT NULL DEFAULT 0")
+    if "retry_count" not in task_cols:
+        conn.execute("ALTER TABLE tasks ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0")
+    if "retry_after" not in task_cols:
+        conn.execute("ALTER TABLE tasks ADD COLUMN retry_after TEXT")
+
+    # Add depends_on column to tasks if missing (DAG dependency support).
+    dep_cols = {row[1] for row in conn.execute("PRAGMA table_info(tasks)").fetchall()}
+    if "depends_on" not in dep_cols:
+        conn.execute("ALTER TABLE tasks ADD COLUMN depends_on TEXT NOT NULL DEFAULT '[]'")
 
     # Add scope column to quota_corrections if missing.
     # scope values:
@@ -236,17 +255,21 @@ def insert_task(task: Task) -> int:
     with connect() as conn:
         cur = conn.execute(
             "INSERT INTO tasks (title, description, source, source_ref, status, priority, model, "
-            "estimated_tokens, work_branch, work_dir, result_summary, created_at, started_at, completed_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "estimated_tokens, work_branch, work_dir, result_summary, created_at, started_at, "
+            "completed_at, max_retries, retry_count, retry_after, depends_on) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (task.title, task.description, task.source.value, task.source_ref,
              task.status.value, task.priority, task.model, task.estimated_tokens,
              task.work_branch, task.work_dir, task.result_summary,
-             _fmt_dt(task.created_at), _fmt_dt(task.started_at), _fmt_dt(task.completed_at)),
+             _fmt_dt(task.created_at), _fmt_dt(task.started_at), _fmt_dt(task.completed_at),
+             task.max_retries, task.retry_count, _fmt_dt(task.retry_after),
+             json.dumps(task.depends_on)),
         )
         return cur.lastrowid  # type: ignore[return-value]
 
 
 def _row_to_task(row: sqlite3.Row) -> Task:
+    keys = row.keys()
     return Task(
         id=row["id"], title=row["title"], description=row["description"],
         source=TaskSource(row["source"]), source_ref=row["source_ref"],
@@ -258,6 +281,10 @@ def _row_to_task(row: sqlite3.Row) -> Task:
         created_at=_parse_dt(row["created_at"]),  # type: ignore[arg-type]
         started_at=_parse_dt(row["started_at"]),
         completed_at=_parse_dt(row["completed_at"]),
+        max_retries=row["max_retries"] if "max_retries" in keys else 0,
+        retry_count=row["retry_count"] if "retry_count" in keys else 0,
+        retry_after=_parse_dt(row["retry_after"]) if "retry_after" in keys else None,
+        depends_on=json.loads(row["depends_on"]) if "depends_on" in keys else [],
     )
 
 
@@ -289,11 +316,14 @@ def update_task(task: Task) -> None:
         conn.execute(
             "UPDATE tasks SET title=?, description=?, source=?, source_ref=?, status=?, "
             "priority=?, model=?, estimated_tokens=?, work_branch=?, work_dir=?, result_summary=?, "
-            "started_at=?, completed_at=? WHERE id=?",
+            "started_at=?, completed_at=?, max_retries=?, retry_count=?, retry_after=?, "
+            "depends_on=? WHERE id=?",
             (task.title, task.description, task.source.value, task.source_ref,
              task.status.value, task.priority, task.model, task.estimated_tokens,
              task.work_branch, task.work_dir, task.result_summary,
-             _fmt_dt(task.started_at), _fmt_dt(task.completed_at), task.id),
+             _fmt_dt(task.started_at), _fmt_dt(task.completed_at),
+             task.max_retries, task.retry_count, _fmt_dt(task.retry_after),
+             json.dumps(task.depends_on), task.id),
         )
 
 

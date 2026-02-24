@@ -226,10 +226,15 @@ def tasks_list(status: str) -> None:
 @click.option("--description", "-d", default="", help="Task description")
 @click.option("--priority", "-p", type=float, default=0.0, help="Priority score")
 @click.option("--model", "-m", default="", help="Model to use (opus/sonnet/haiku or auto)")
-def tasks_add(title: str, description: str, priority: float, model: str) -> None:
+@click.option("--max-retries", type=int, default=0, help="Max retry attempts on failure (0=no retry)")
+@click.option("--depends-on", "depends_on", multiple=True, type=int, default=(),
+              help="Task ID this task depends on (repeatable, e.g. --depends-on 1 --depends-on 2)")
+def tasks_add(title: str, description: str, priority: float, model: str,
+              max_retries: int, depends_on: tuple[int, ...]) -> None:
     """Add a task to the queue."""
     from wise_magpie.tasks.manager import add_task
-    add_task(title, description, priority, model=model)
+    add_task(title, description, priority, model=model, max_retries=max_retries,
+             depends_on=list(depends_on))
 
 
 @tasks.command("scan")
@@ -246,6 +251,36 @@ def tasks_remove(task_id: int) -> None:
     """Remove a task from the queue."""
     from wise_magpie.tasks.manager import remove_task
     remove_task(task_id)
+
+
+@tasks.command("batch-submit")
+@click.option("--max-tasks", default=50, help="Maximum tasks to submit")
+def tasks_batch_submit(max_tasks: int) -> None:
+    """Submit pending tasks to Anthropic Batch API (50% cost reduction).
+
+    Results are available within 24 hours. Use 'tasks batch-collect' to retrieve.
+    """
+    from wise_magpie.quota.batch import run_batch_now
+    count, batch_id = run_batch_now(max_tasks=max_tasks)
+    if batch_id:
+        click.echo(f"Submitted {count} task(s) to batch {batch_id}")
+        click.echo(f"Collect with: wise-magpie tasks batch-collect {batch_id}")
+    else:
+        click.echo("Batch submission failed or no pending tasks.", err=True)
+
+
+@tasks.command("batch-collect")
+@click.argument("batch_id")
+def tasks_batch_collect(batch_id: str) -> None:
+    """Collect results from a previously submitted batch."""
+    from wise_magpie.quota.batch import check_batch, collect_results, process_batch_results
+    status = check_batch(batch_id)
+    if status.get("processing_status") != "ended":
+        click.echo(f"Batch {batch_id} is still processing ({status.get('processing_status')})")
+        return
+    results = collect_results(batch_id)
+    process_batch_results(results)
+    click.echo(f"Processed {len(results)} result(s) from batch {batch_id}")
 
 
 # --- Review commands (Phase 7) ---
@@ -284,6 +319,129 @@ def review_reject(task_id: int) -> None:
     """Reject and clean up a completed task."""
     from wise_magpie.review.applicator import reject_task
     reject_task(task_id)
+
+
+# --- MCP server commands ---
+
+@main.group()
+def mcp() -> None:
+    """MCP server for Claude Code integration."""
+
+
+@mcp.command("start")
+def mcp_start() -> None:
+    """Start the wise-magpie MCP server on stdio.
+
+    \b
+    Add to ~/.claude/mcp.json:
+      {
+        "mcpServers": {
+          "wise-magpie": {
+            "command": "wise-magpie",
+            "args": ["mcp", "start"]
+          }
+        }
+      }
+    """
+    from wise_magpie.mcp_server import serve
+    serve()
+
+
+# --- Webhook commands ---
+
+@main.group()
+def webhook() -> None:
+    """GitHub webhook server for event-driven task creation."""
+
+
+@webhook.command("start")
+@click.option("--host", default="127.0.0.1", help="Bind address")
+@click.option("--port", default=8765, type=int, help="Port number")
+@click.option("--secret", default="", envvar="WISE_MAGPIE_WEBHOOK_SECRET",
+              help="GitHub webhook secret")
+def webhook_start(host: str, port: int, secret: str) -> None:
+    """Start the webhook HTTP server.
+
+    \b
+    Configure in GitHub repo Settings → Webhooks:
+      Payload URL: http://your-server:8765/webhook/github
+      Content type: application/json
+      Events: Issues, Pull requests, Workflow runs, Pushes
+    """
+    from wise_magpie.webhook.server import start_server
+    click.echo(f"Starting webhook server on {host}:{port}")
+    start_server(host=host, port=port, secret=secret)
+
+
+# --- Activity hook commands ---
+
+@main.group()
+def activity() -> None:
+    """Direct activity signals from Claude Code Hooks."""
+
+
+@activity.command("ping")
+def activity_ping() -> None:
+    """Record that the user is active (call from a Notification hook).
+
+    \b
+    Add to ~/.claude/settings.json:
+      "hooks": {
+        "Notification": [{"hooks": [{"type": "command",
+          "command": "wise-magpie activity ping"}]}]
+      }
+    """
+    from wise_magpie.patterns.activity import hook_ping
+    hook_ping()
+
+
+@activity.command("session-end")
+def activity_session_end() -> None:
+    """Record that the user's session has ended (call from a Stop hook).
+
+    \b
+    Add to ~/.claude/settings.json:
+      "hooks": {
+        "Stop": [{"hooks": [{"type": "command",
+          "command": "wise-magpie activity session-end"}]}]
+      }
+    """
+    from wise_magpie.patterns.activity import hook_session_end
+    hook_session_end()
+
+
+@activity.command("setup-hooks")
+def activity_setup_hooks() -> None:
+    """Print the Claude Code hook configuration to enable direct activity detection."""
+    import json
+    hooks_config = {
+        "hooks": {
+            "Notification": [
+                {
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": "wise-magpie activity ping",
+                            "async": True,
+                        }
+                    ]
+                }
+            ],
+            "Stop": [
+                {
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": "wise-magpie activity session-end",
+                            "async": True,
+                        }
+                    ]
+                }
+            ],
+        }
+    }
+    click.echo("Add the following to ~/.claude/settings.json (merge with existing hooks):\n")
+    click.echo(json.dumps(hooks_config, indent=2, ensure_ascii=False))
 
 
 # --- Daemon commands (Phase 6) ---

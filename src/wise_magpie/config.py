@@ -55,8 +55,33 @@ auto_sync_interval_minutes = {auto_sync_interval_minutes}
 model = "{model}"
 # Automatically select model based on task difficulty (default: true)
 auto_select_model = true
+# When the primary model is unavailable or rate-limited, fall back to this model.
+# Set to "" to disable. Example: "sonnet" or "claude-sonnet-4-6"
+fallback_model = "sonnet"
 # Additional claude CLI flags
 extra_flags = []
+
+[review]
+# Automatically create a GitHub Pull Request after task completion
+# Requires the gh CLI to be installed and authenticated
+auto_pr = false
+# Enable AI code review after task completion (uses an extra claude call, ~$0.05-0.10)
+ai_review = false
+ai_review_model = "sonnet"
+
+[webhook]
+# Bind address for the webhook HTTP server
+host = "127.0.0.1"
+# Port number
+port = 8765
+# GitHub webhook secret (or set WISE_MAGPIE_WEBHOOK_SECRET env var)
+secret = ""
+
+[batch]
+# Default model for batch processing
+model = "sonnet"
+# Maximum tasks per batch submission
+max_tasks = 50
 
 [auto_tasks]
 # Automatically generate routine maintenance tasks during scan

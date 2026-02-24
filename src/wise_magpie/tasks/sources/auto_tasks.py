@@ -208,6 +208,105 @@ def _branch_commit_count(path: str) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Cron helpers
+# ---------------------------------------------------------------------------
+
+def _parse_cron_simple(cron_expr: str, ref: datetime) -> datetime | None:
+    """Return the most recent fire time at or before *ref* for a basic cron expression.
+
+    Supports the standard 5-field format: ``"minute hour day month weekday"``
+    where ``*`` means "any".  Only simple integer values and ``*`` wildcards
+    are handled; step/range syntax is not supported.
+
+    Weekday convention: 0 = Monday … 6 = Sunday (Python's ``weekday()``).
+    The common ``0 = Sunday`` convention is also recognised when the value
+    is 7 or when parsing results in no match with the default convention.
+
+    Returns ``None`` if the expression cannot be parsed or no recent fire
+    time can be determined within a reasonable look-back window.
+    """
+    parts = cron_expr.strip().split()
+    if len(parts) != 5:
+        return None
+
+    def _field(s: str) -> int | None:
+        if s == "*":
+            return None
+        try:
+            return int(s)
+        except ValueError:
+            return None
+
+    f_min, f_hour, f_day, f_month, f_wday = [_field(p) for p in parts]
+
+    # Normalise weekday: cron 0/7 = Sunday → Python weekday 6
+    if f_wday is not None:
+        if f_wday == 0 or f_wday == 7:
+            f_wday = 6  # Sunday in Python
+        else:
+            f_wday = f_wday - 1  # 1(Mon)→0 … 6(Sat)→5
+
+    # Walk backwards minute-by-minute up to ~8 days to find the last firing.
+    # We cap at 60*24*8 = 11 520 iterations which is cheap enough.
+    candidate = ref.replace(second=0, microsecond=0)
+    for _ in range(11_520):
+        match = True
+        if f_min is not None and candidate.minute != f_min:
+            match = False
+        if match and f_hour is not None and candidate.hour != f_hour:
+            match = False
+        if match and f_day is not None and candidate.day != f_day:
+            match = False
+        if match and f_month is not None and candidate.month != f_month:
+            match = False
+        if match and f_wday is not None and candidate.weekday() != f_wday:
+            match = False
+        if match:
+            return candidate
+        candidate -= timedelta(minutes=1)
+
+    return None
+
+
+def _cron_triggered(cron_expr: str, last_completed: datetime | None) -> bool:
+    """Return True if the cron schedule has fired since *last_completed*.
+
+    Uses ``croniter`` when available; falls back to :func:`_parse_cron_simple`
+    for basic expressions using only the standard library.
+
+    Args:
+        cron_expr: A 5-field cron expression, e.g. ``"0 9 * * 1"``.
+        last_completed: The last time a task of this type completed, or
+            ``None`` if it has never completed.
+
+    Returns:
+        ``True`` when the schedule has produced at least one fire time
+        after *last_completed* (or when *last_completed* is ``None``).
+    """
+    if last_completed is None:
+        return True
+
+    now = datetime.now()
+
+    # Try croniter first (optional dependency).
+    try:
+        from croniter import croniter  # type: ignore[import]
+        # get_prev returns the most recent fire time <= now
+        itr = croniter(cron_expr, now)
+        last_fire = itr.get_prev(datetime)
+        return last_fire > last_completed
+    except ImportError:
+        pass
+
+    # Fall back to simple parser.
+    last_fire = _parse_cron_simple(cron_expr, now)
+    if last_fire is None:
+        # Cannot parse — do not trigger to avoid false positives.
+        return False
+    return last_fire > last_completed
+
+
+# ---------------------------------------------------------------------------
 # Condition evaluation
 # ---------------------------------------------------------------------------
 
@@ -239,16 +338,34 @@ def _check_template(
     path: str,
     cfg: dict[str, Any],
 ) -> bool:
-    """Evaluate whether *template*'s trigger conditions are all met."""
+    """Evaluate whether *template*'s trigger conditions are all met.
+
+    Time-based triggering supports two mechanisms that can be combined with
+    OR logic:
+
+    * ``interval_hours`` — fire when at least this many hours have elapsed
+      since the last completed task of this type (original behaviour).
+    * ``cron`` — fire when the cron schedule has produced a fire time after
+      the last completed task (new behaviour).
+
+    When both are configured, the template fires if *either* condition is
+    satisfied.  When neither is configured the time-based check is skipped.
+    """
     task_cfg = cfg.get(template.task_type, {})
     if not task_cfg.get("enabled", True):
         return False
 
     interval = task_cfg.get("interval_hours", template.interval_hours)
+    cron_expr: str = task_cfg.get("cron", "")
 
-    # Time-based check
-    if interval > 0 and not _interval_elapsed(template.task_type, interval):
-        return False
+    # Time-based check (interval OR cron, skipped when neither is set)
+    if interval > 0 or cron_expr:
+        interval_ok = interval > 0 and _interval_elapsed(template.task_type, interval)
+        cron_ok = bool(cron_expr) and _cron_triggered(
+            cron_expr, _last_completed_at(template.task_type)
+        )
+        if not (interval_ok or cron_ok):
+            return False
 
     # Commit-count check (clean_commits)
     if template.min_commits > 0:

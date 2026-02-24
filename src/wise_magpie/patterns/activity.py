@@ -3,6 +3,10 @@
 Detects whether the user is actively using Claude by monitoring quota
 variation.  If the usage percentage reported by auto-sync has changed
 between the two most recent snapshots, the user is considered active.
+
+Additionally supports direct event injection via Claude Code Hooks:
+  wise-magpie activity ping          # called from Notification hook
+  wise-magpie activity session-end   # called from Stop hook
 """
 
 from __future__ import annotations
@@ -16,16 +20,77 @@ from wise_magpie.models import ActivitySession
 # Module-level state: tracks the current open activity session.
 _current_session_id: int | None = None
 
+# Timestamp of the most recent direct hook ping (bypasses quota-diff check).
+_last_hook_ping: datetime | None = None
+
+# Seconds to keep considering "active" after a hook ping with no follow-up.
+_HOOK_ACTIVE_WINDOW = 300  # 5 minutes
+
+
+def hook_ping() -> None:
+    """Record a direct activity ping from a Claude Code Hook.
+
+    Call this from a ``Notification`` hook to give wise-magpie an
+    authoritative signal that the user is currently active.  The signal
+    stays effective for ``_HOOK_ACTIVE_WINDOW`` seconds.
+    """
+    global _last_hook_ping, _current_session_id
+
+    _last_hook_ping = datetime.now()
+    db.init_db()
+
+    now = datetime.now()
+    if _current_session_id is None:
+        session = ActivitySession(start_time=now, end_time=None, message_count=0)
+        _current_session_id = db.insert_activity_session(session)
+    else:
+        sessions = db.get_recent_sessions(limit=1)
+        for s in sessions:
+            if s.id == _current_session_id:
+                s.end_time = now
+                s.message_count += 1
+                db.update_activity_session(s)
+                break
+
+
+def hook_session_end() -> None:
+    """Record a session-end event from a Claude Code Stop hook.
+
+    Closes the current activity session immediately so the daemon knows
+    the user has finished and idle time begins now.
+    """
+    global _last_hook_ping, _current_session_id
+
+    _last_hook_ping = None
+    db.init_db()
+
+    now = datetime.now()
+    if _current_session_id is not None:
+        sessions = db.get_recent_sessions(limit=1)
+        for s in sessions:
+            if s.id == _current_session_id:
+                s.end_time = now
+                db.update_activity_session(s)
+                break
+        _current_session_id = None
+
 
 def is_user_active() -> bool:
     """Check if the user is currently using Claude.
 
-    Compares the two most recent session-scope quota corrections recorded
-    by auto-sync.  If the usage percentage changed between them, the user
-    is actively consuming quota and is considered active.  When fewer than
-    two snapshots exist, returns ``False`` (not enough data to confirm
-    activity).
+    Returns ``True`` if a direct Hook ping was received recently
+    (within ``_HOOK_ACTIVE_WINDOW`` seconds).  Falls back to comparing
+    the two most recent session-scope quota corrections recorded by
+    auto-sync: if the usage percentage changed between them, the user is
+    actively consuming quota.  When fewer than two snapshots exist,
+    returns ``False`` (not enough data to confirm activity).
     """
+    # Hook-based detection takes priority: it is authoritative and immediate.
+    if _last_hook_ping is not None:
+        elapsed = (datetime.now() - _last_hook_ping).total_seconds()
+        if elapsed < _HOOK_ACTIVE_WINDOW:
+            return True
+
     db.init_db()
     corrections = db.get_latest_session_corrections(limit=2)
     if len(corrections) < 2:
