@@ -56,15 +56,17 @@ class _FakeResult:
     output_tokens: int = 200
     duration_seconds: float = 1.0
     error: str = ""
+    is_rate_limited: bool = False
 
 
-def _make_task(work_dir: str = "", git: bool = False) -> Task:
+def _make_task(work_dir: str = "", git: bool = False, max_retries: int = 0) -> Task:
     task = Task(
         title="runner test",
         description="desc",
         source=TaskSource.MANUAL,
         status=TaskStatus.PENDING,
         work_dir=work_dir,
+        max_retries=max_retries,
     )
     task.id = db.insert_task(task)
     return task
@@ -96,6 +98,27 @@ class TestRunSingleTask:
         updated = db.get_task(task.id)
         assert updated.status == TaskStatus.FAILED
         assert "timeout" in updated.result_summary
+
+    @patch("wise_magpie.daemon.runner.report_execution")
+    @patch(
+        "wise_magpie.daemon.runner.execute_task",
+        return_value=_FakeResult(
+            success=False,
+            error="You've hit your limit · resets 10pm (Asia/Tokyo)",
+            is_rate_limited=True,
+        ),
+    )
+    @patch("wise_magpie.daemon.runner.get_task_budget", return_value=2.0)
+    @patch("wise_magpie.daemon.runner.select_model", return_value="claude-sonnet-4-5-20250929")
+    def test_rate_limited(self, mock_model, mock_budget, mock_exec, mock_report, tmp_path):
+        """Rate-limited tasks are re-queued without consuming retries."""
+        task = _make_task(work_dir=str(tmp_path), max_retries=1)
+        _run_single_task(task)
+        updated = db.get_task(task.id)
+        assert updated.status == TaskStatus.PENDING
+        assert updated.retry_count == 0  # retries NOT consumed
+        assert "Rate-limited" in updated.result_summary
+        assert updated.retry_after is not None
 
     @patch("wise_magpie.daemon.runner.report_execution")
     @patch("wise_magpie.daemon.runner.execute_task", side_effect=RuntimeError("boom"))
@@ -216,6 +239,7 @@ class _FakeResultParallel:
     output_tokens: int = 200
     duration_seconds: float = 0.1
     error: str = ""
+    is_rate_limited: bool = False
 
 
 class TestParallelExecution:

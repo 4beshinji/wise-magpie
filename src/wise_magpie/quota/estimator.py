@@ -11,6 +11,10 @@ from wise_magpie.constants import MODEL_QUOTAS, resolve_model
 from wise_magpie.models import QuotaWindow
 
 
+# Cache of the last successful API snapshot (survives transient 429s).
+_last_api_snapshot: dict = {}
+
+
 def _ensure_window() -> QuotaWindow:
     """Return the current quota window, creating one if none exists."""
     window = db.get_current_quota_window()
@@ -59,11 +63,42 @@ def get_model_limit(model: str) -> int:
     return config.get("quota", "messages_per_window", constants.DEFAULT_MESSAGES_PER_WINDOW)
 
 
-def estimate_remaining(model: str | None = None) -> dict:
-    """Estimate remaining quota in the current window.
+def update_snapshot(snapshot: dict) -> None:
+    """Store a successful API snapshot in the in-process cache.
 
-    If *model* is given, estimates remaining quota for that specific model.
-    Otherwise uses the configured default model (backward compatible).
+    Called by ``auto_sync`` (the only place that hits the API).
+    """
+    _last_api_snapshot.update(snapshot)
+
+
+def _get_cached_pct_used() -> float | None:
+    """Return the last known five_hour_pct without calling the API.
+
+    Resolution order:
+      1. In-process cache (``_last_api_snapshot``, set by ``auto_sync``).
+      2. Latest ``session`` correction in the DB (persists across restarts).
+    """
+    if _last_api_snapshot:
+        return _last_api_snapshot["five_hour_pct"]
+
+    # DB fallback — session corrections store pct_used from the API
+    try:
+        window = _ensure_window()
+        if window.id:
+            corr = db.get_latest_quota_correction(window.id, resolve_model("sonnet"))
+            if corr is not None and corr["scope"] == "session":
+                return corr["remaining"]  # stored as pct_used
+    except Exception:
+        pass
+    return None
+
+
+def estimate_remaining(model: str | None = None) -> dict:
+    """Estimate remaining quota from cached API data (never calls the API).
+
+    The daemon's periodic ``auto_sync`` (every 30 min) fetches the API and
+    stores the result via ``update_snapshot``.  This function only reads
+    from that cache or the DB.
 
     Returns a dict with keys:
         window_start, window_end, estimated_limit, used, remaining,
@@ -75,43 +110,34 @@ def estimate_remaining(model: str | None = None) -> dict:
     window = _ensure_window()
     window_end = window.window_start + timedelta(hours=window.window_hours)
 
-    # Resolve model
+    # Resolve model (used only for informational purposes)
     if model is None:
         cfg = config.load_config()
         model = resolve_model(cfg.get("claude", {}).get("model", constants.DEFAULT_MODEL))
 
     model_limit = get_model_limit(model)
 
-    # Check for per-model correction
-    correction = db.get_latest_quota_correction(window.id, model) if window.id else None  # type: ignore[arg-type]
+    # ── Use cached API pct_used (no API call) ─────────────────
+    pct_used = _get_cached_pct_used()
 
-    if correction is not None and correction["scope"] == "session":
-        # New-style: remaining stores pct_used from Claude's "Current session X%"
-        pct_used = correction["remaining"]
-        base_remaining = int((1 - pct_used / 100) * model_limit)
-        corrected_at = correction["corrected_at"]
-        post_correction_count = db.get_model_usage_count(model, corrected_at)
-        remaining = max(base_remaining - post_correction_count, 0)
-        used = model_limit - remaining
-    elif correction is not None and correction["scope"] == "legacy":
-        # Legacy: remaining stores raw remaining message count
-        corrected_at = correction["corrected_at"]
-        post_correction_count = db.get_model_usage_count(model, corrected_at)
-        remaining = max(correction["remaining"] - post_correction_count, 0)
-        used = model_limit - remaining
-    elif window.user_correction is not None and model == resolve_model(
-        config.get("claude", "model", constants.DEFAULT_MODEL)
-    ):
-        # Oldest legacy: per-window user_correction field
-        post_correction_records = db.get_usage_since(window.corrected_at)  # type: ignore[arg-type]
-        used_after_correction = len(post_correction_records)
-        remaining = max(window.user_correction - used_after_correction, 0)
+    if pct_used is not None:
+        remaining_pct = max(100.0 - pct_used, 0.0)
+
+        # Use cached resets_at for accurate window end
+        if _last_api_snapshot.get("five_hour_resets_at"):
+            resets_at = _last_api_snapshot["five_hour_resets_at"]
+            if resets_at.tzinfo is not None:
+                from datetime import timezone
+                resets_at = resets_at.astimezone(timezone.utc).replace(tzinfo=None)
+            window_end = resets_at
+
+        remaining = int(remaining_pct / 100.0 * model_limit)
         used = model_limit - remaining
     else:
-        used = db.get_model_usage_count(model, window.window_start)
-        remaining = max(model_limit - used, 0)
-
-    remaining_pct = (remaining / model_limit * 100) if model_limit else 0.0
+        # No API data at all — assume full quota available
+        remaining = model_limit
+        used = 0
+        remaining_pct = 100.0
 
     safety_margin = config.get("quota", "safety_margin", constants.QUOTA_SAFETY_MARGIN)
     safety_reserved = int(model_limit * safety_margin)

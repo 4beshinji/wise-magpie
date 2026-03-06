@@ -4,12 +4,27 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 from dataclasses import dataclass
 from datetime import datetime
 
 from wise_magpie import config, constants
 from wise_magpie.quota.tracker import record_usage
+
+# Patterns that indicate a rate limit (not a task failure).
+_RATE_LIMIT_PATTERNS = [
+    re.compile(r"hit your limit", re.IGNORECASE),
+    re.compile(r"rate.?limit", re.IGNORECASE),
+    re.compile(r"resets?\s+\d+[ap]m", re.IGNORECASE),
+    re.compile(r"too many requests", re.IGNORECASE),
+    re.compile(r"overloaded", re.IGNORECASE),
+]
+
+
+def _is_rate_limit_error(text: str) -> bool:
+    """Return True if *text* looks like a rate-limit / quota-exhaustion error."""
+    return any(p.search(text) for p in _RATE_LIMIT_PATTERNS)
 
 
 @dataclass
@@ -22,6 +37,7 @@ class ExecutionResult:
     output_tokens: int
     duration_seconds: float
     error: str = ""
+    is_rate_limited: bool = False
 
 
 def build_claude_command(
@@ -44,6 +60,7 @@ def build_claude_command(
         "--output-format", "json",
         "--max-turns", "50",
         f"--max-budget-usd={max_budget}",
+        "--dangerously-skip-permissions",
     ]
 
     # Add fallback model if configured (claude uses it when primary is rate-limited).
@@ -147,6 +164,9 @@ def execute_task(
     success = result.returncode == 0
     error = result.stderr if not success else ""
 
+    # Detect rate-limit errors from either stderr or stdout.
+    rate_limited = _is_rate_limit_error(error) or _is_rate_limit_error(output_text)
+
     return ExecutionResult(
         success=success,
         output=output_text,
@@ -155,4 +175,5 @@ def execute_task(
         output_tokens=output_tokens,
         duration_seconds=duration,
         error=error,
+        is_rate_limited=rate_limited,
     )

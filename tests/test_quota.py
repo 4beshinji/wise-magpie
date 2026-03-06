@@ -43,24 +43,28 @@ def test_has_budget_for_task():
 
 
 def test_apply_correction_session():
-    """Session percentage should reduce estimated remaining."""
+    """Session percentage should reduce estimated remaining (via cached snapshot)."""
+    from wise_magpie.quota.estimator import update_snapshot
     apply_correction(session=50)  # 50% used
+    update_snapshot({"five_hour_pct": 50.0, "five_hour_resets_at": None})
     est = estimate_remaining()
-    limit = est["estimated_limit"]
-    # remaining should be roughly half the limit (minus any post-correction usage)
-    assert est["remaining"] <= limit // 2 + 1
+    assert 45 <= est["remaining_pct"] <= 55
 
 
 def test_apply_correction_session_full():
-    """100% session usage should yield 0 remaining."""
+    """100% session usage should yield 0 remaining (via cached snapshot)."""
+    from wise_magpie.quota.estimator import update_snapshot
     apply_correction(session=100)
+    update_snapshot({"five_hour_pct": 100.0, "five_hour_resets_at": None})
     est = estimate_remaining()
     assert est["remaining"] == 0
 
 
 def test_apply_correction_session_zero():
-    """0% session usage should yield full remaining."""
+    """0% session usage should yield full remaining (via cached snapshot)."""
+    from wise_magpie.quota.estimator import update_snapshot
     apply_correction(session=0)
+    update_snapshot({"five_hour_pct": 0.0, "five_hour_resets_at": None})
     est = estimate_remaining()
     assert est["remaining"] == est["estimated_limit"]
 

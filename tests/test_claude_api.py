@@ -115,9 +115,11 @@ class TestAutoSync:
             result = auto_sync()
 
         assert result is True
-        sonnet_id = constants.MODEL_ALIASES["sonnet"]
-        est = estimate_remaining(model=sonnet_id)
-        assert est["remaining"] <= est["estimated_limit"] // 2 + 1
+
+        # auto_sync now populates the in-process cache; no API patch needed
+        est = estimate_remaining()
+        # API says 50% used → remaining_pct should be ~50%
+        assert 45 <= est["remaining_pct"] <= 55
 
     def test_auto_sync_returns_false_on_api_failure(self):
         from wise_magpie.quota.corrections import auto_sync

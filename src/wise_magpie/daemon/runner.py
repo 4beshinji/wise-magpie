@@ -15,7 +15,7 @@ import click
 from datetime import timedelta
 
 from wise_magpie import config, constants, db
-from wise_magpie.daemon.scheduler import get_parallel_limit, should_execute
+from wise_magpie.daemon.scheduler import get_parallel_limit, should_execute, trip_circuit_breaker
 from wise_magpie.daemon.signals import SignalHandler
 from wise_magpie.models import Task, TaskStatus
 
@@ -153,6 +153,22 @@ def _run_single_task(task: Task) -> None:
                 if pr_url:
                     task.result_summary = f"PR: {pr_url}\n\n{task.result_summary}"
                     db.update_task(task)
+        elif result.is_rate_limited:
+            # Rate-limit: re-queue without consuming retries, trip breaker
+            cooldown = constants.RATE_LIMIT_COOLDOWN_SECONDS
+            breaker_until = trip_circuit_breaker(cooldown)
+            task.retry_after = breaker_until
+            task.status = TaskStatus.PENDING
+            task.work_branch = ""
+            task.result_summary = (
+                f"Rate-limited; re-queued until {breaker_until.strftime('%H:%M')}. "
+                f"{result.error[:200]}"
+            )
+            logger.warning(
+                f"  Task #{task.id} hit rate limit — circuit breaker tripped "
+                f"until {breaker_until.strftime('%H:%M')} (retry_count unchanged: "
+                f"{task.retry_count}/{task.max_retries})"
+            )
         else:
             task.retry_count += 1
             if task.retry_count <= task.max_retries:
@@ -223,9 +239,12 @@ def _daemon_loop(handler: SignalHandler) -> None:
         poll_interval = constants.BURST_POLL_INTERVAL_SECONDS
     else:
         poll_interval = cfg.get("daemon", {}).get("poll_interval", constants.POLL_INTERVAL_SECONDS)
-    sync_interval = cfg.get("quota", {}).get(
-        "auto_sync_interval_minutes", constants.QUOTA_AUTO_SYNC_INTERVAL_MINUTES
-    ) * 60  # convert to seconds
+    if burst:
+        sync_interval = 10 * 60  # 10 minutes in burst mode
+    else:
+        sync_interval = cfg.get("quota", {}).get(
+            "auto_sync_interval_minutes", constants.QUOTA_AUTO_SYNC_INTERVAL_MINUTES
+        ) * 60  # convert to seconds
 
     logger.info(
         "Daemon started (PID %d)%s", os.getpid(), " [BURST MODE]" if burst else ""

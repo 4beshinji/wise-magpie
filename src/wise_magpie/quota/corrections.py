@@ -49,6 +49,10 @@ def auto_sync() -> bool:
     if snapshot is None:
         return False
 
+    # Populate in-process cache so estimate_remaining() never needs to call API
+    from wise_magpie.quota.estimator import update_snapshot
+    update_snapshot(snapshot)
+
     apply_correction(
         session=int(snapshot["five_hour_pct"]),
         week_all=(int(snapshot["week_all_pct"]) if snapshot["week_all_pct"] is not None else None),

@@ -3,11 +3,52 @@
 from __future__ import annotations
 
 import math
-from datetime import datetime
+import threading
+from datetime import datetime, timedelta
 
 from wise_magpie import config, constants, db
 from wise_magpie.models import TaskStatus
 from wise_magpie.worker.monitor import check_budget_available
+
+# ── Circuit breaker ──────────────────────────────────────────────
+# When a task hits a rate limit, trip_circuit_breaker() is called.
+# All subsequent should_execute() calls will refuse to dispatch
+# until the cooldown expires.
+_breaker_lock = threading.Lock()
+_breaker_until: datetime | None = None  # None = circuit closed (healthy)
+
+
+def trip_circuit_breaker(cooldown_seconds: int | None = None) -> datetime:
+    """Open the circuit breaker.  Returns the datetime when it will close."""
+    global _breaker_until
+    if cooldown_seconds is None:
+        cooldown_seconds = constants.RATE_LIMIT_COOLDOWN_SECONDS
+    until = datetime.now() + timedelta(seconds=cooldown_seconds)
+    with _breaker_lock:
+        # Only extend, never shorten an existing cooldown.
+        if _breaker_until is None or until > _breaker_until:
+            _breaker_until = until
+    return until
+
+
+def get_breaker_until() -> datetime | None:
+    """Return when the breaker will close, or None if closed."""
+    with _breaker_lock:
+        if _breaker_until is not None and datetime.now() >= _breaker_until:
+            return None
+        return _breaker_until
+
+
+def _is_circuit_open() -> tuple[bool, str]:
+    """Check if the circuit breaker is open (rate-limited)."""
+    with _breaker_lock:
+        if _breaker_until is None:
+            return False, ""
+        remaining = (_breaker_until - datetime.now()).total_seconds()
+        if remaining <= 0:
+            return False, ""
+        mins = remaining / 60
+        return True, f"Rate-limited: cooldown {mins:.0f}m remaining"
 
 
 def calculate_max_parallel(
@@ -101,6 +142,11 @@ def should_execute() -> tuple[bool, str]:
     Returns (should_run, reason).
     """
     db.init_db()
+
+    # Check 0: Is the circuit breaker open (rate-limited)?
+    tripped, breaker_reason = _is_circuit_open()
+    if tripped:
+        return False, breaker_reason
 
     # Check 1: Is there budget?
     has_budget, budget_reason = check_budget_available()

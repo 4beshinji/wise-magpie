@@ -12,7 +12,7 @@ from wise_magpie.worker.sandbox import (
     get_current_branch,
     has_uncommitted_changes,
 )
-from wise_magpie.worker.executor import build_claude_command
+from wise_magpie.worker.executor import build_claude_command, _is_rate_limit_error
 from wise_magpie.worker.monitor import check_budget_available, get_task_budget
 
 
@@ -22,6 +22,15 @@ def test_sanitize_branch_name():
     assert _sanitize_branch_name("special!@#chars") == "specialchars"
     # Truncation
     assert len(_sanitize_branch_name("a" * 100)) <= 50
+
+
+def test_is_rate_limit_error():
+    assert _is_rate_limit_error("You've hit your limit · resets 10pm (Asia/Tokyo)")
+    assert _is_rate_limit_error("Error: rate limit exceeded")
+    assert _is_rate_limit_error("429 Too Many Requests")
+    assert _is_rate_limit_error("API is overloaded")
+    assert not _is_rate_limit_error("Task timed out")
+    assert not _is_rate_limit_error("claude CLI not found")
 
 
 def test_build_claude_command():

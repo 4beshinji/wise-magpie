@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from unittest.mock import patch
 
 from wise_magpie import db
-from wise_magpie.daemon.scheduler import calculate_max_parallel, should_execute
+from wise_magpie.daemon.scheduler import calculate_max_parallel, should_execute, trip_circuit_breaker
 from wise_magpie.models import Task, TaskSource, TaskStatus
 
 
@@ -201,3 +201,23 @@ class TestAllChecksPassing:
             ok, reason = should_execute()
         assert ok is True
         assert "parallel" in reason.lower()
+
+
+class TestCircuitBreaker:
+    """Verify that should_execute() respects the circuit breaker."""
+
+    def test_breaker_blocks_execution(self):
+        _insert_task(TaskStatus.PENDING)
+        trip_circuit_breaker(300)  # 5 min cooldown
+        with _patch_all():
+            ok, reason = should_execute()
+        assert ok is False
+        assert "rate-limited" in reason.lower()
+
+    def test_expired_breaker_allows_execution(self):
+        import wise_magpie.daemon.scheduler as _sched
+        _insert_task(TaskStatus.PENDING)
+        _sched._breaker_until = datetime.now() - timedelta(seconds=1)
+        with _patch_all():
+            ok, reason = should_execute()
+        assert ok is True

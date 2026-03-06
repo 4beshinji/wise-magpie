@@ -19,6 +19,12 @@ def tmp_config_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setattr(config, "CONFIG_DIR", cfg_dir)
     monkeypatch.setattr(config, "CONFIG_FILE", cfg_dir / "config.toml")
     db.init_db()
+    # Reset circuit breaker between tests to prevent leakage.
+    import wise_magpie.daemon.scheduler as _sched
+    _sched._breaker_until = None
+    # Reset API snapshot cache between tests.
+    import wise_magpie.quota.estimator as _est
+    _est._last_api_snapshot.clear()
     return cfg_dir
 
 

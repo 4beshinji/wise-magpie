@@ -219,6 +219,7 @@ def test_get_model_usage_count():
 
 def test_quota_correction_session():
     """Session percentage correction should be recorded and affect remaining estimate."""
+    from unittest.mock import patch
     from wise_magpie.quota.corrections import apply_correction
     from wise_magpie.quota.estimator import estimate_remaining
     from wise_magpie import constants
@@ -234,10 +235,12 @@ def test_quota_correction_session():
     assert correction["scope"] == "session"
     assert correction["remaining"] == 50  # stored as pct_used
 
+    # Populate in-process cache so estimate_remaining reads from it
+    from wise_magpie.quota.estimator import update_snapshot
+    update_snapshot({"five_hour_pct": 50.0, "five_hour_resets_at": None})
     est = estimate_remaining(model=sonnet_id)
-    sonnet_limit = est["estimated_limit"]
     # Remaining should be roughly 50% of limit
-    assert est["remaining"] <= sonnet_limit // 2 + 1
+    assert 45 <= est["remaining_pct"] <= 55
 
 
 def test_task_model_field_persists():
