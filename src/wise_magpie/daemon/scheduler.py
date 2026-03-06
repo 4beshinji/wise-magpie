@@ -55,9 +55,15 @@ def get_parallel_limit() -> int:
       current 5-hour window resets (``calculate_max_parallel``).
     - **Weekly budget limit**: computed every 30 minutes from the weekly
       usage percentage, ensuring wise-magpie lands at ≤ 90% at weekly reset.
+
+    In burst mode, returns the hard cap directly — no throttling.
     """
     cfg = config.load_config()
     cap = cfg.get("daemon", {}).get("max_parallel_tasks", constants.MAX_PARALLEL_TASKS)
+
+    # Burst mode: always use full capacity
+    if config.is_burst_mode():
+        return max(cap, 1)
 
     # 5-hour window limit
     try:
@@ -89,6 +95,9 @@ def should_execute() -> tuple[bool, str]:
     capacity.  User activity is no longer a blocker: tasks run in parallel
     with the user as long as quota remains.
 
+    In burst mode, when the queue is empty, a rescan is triggered
+    automatically to refill it.
+
     Returns (should_run, reason).
     """
     db.init_db()
@@ -100,6 +109,18 @@ def should_execute() -> tuple[bool, str]:
 
     # Check 2: Are there pending tasks?
     pending = db.get_tasks_by_status(TaskStatus.PENDING)
+    if not pending:
+        # In burst mode, automatically rescan for new tasks
+        if config.is_burst_mode():
+            from wise_magpie.tasks.manager import scan_tasks
+            inserted = scan_tasks(".", quiet=True)
+            if inserted > 0:
+                pending = db.get_tasks_by_status(TaskStatus.PENDING)
+            else:
+                return False, "Burst: no pending tasks after rescan"
+        else:
+            return False, "No pending tasks in queue"
+
     if not pending:
         return False, "No pending tasks in queue"
 

@@ -55,6 +55,8 @@ RETURN_BUFFER_MINUTES = 15  # Stop new tasks this many minutes before predicted 
 # Daemon
 POLL_INTERVAL_SECONDS = 60  # How often daemon checks for work
 MAX_PARALLEL_TASKS = 30          # Hard upper bound on concurrent autonomous tasks
+BURST_MODE = False               # When True, ignore interval checks and minimize poll delay
+BURST_POLL_INTERVAL_SECONDS = 5  # Poll interval in burst mode
 
 # Weekly quota budget
 WEEKLY_QUOTA_TARGET_PCT = 90.0   # Target max weekly usage % at reset time

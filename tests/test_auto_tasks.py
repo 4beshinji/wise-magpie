@@ -12,11 +12,15 @@ from wise_magpie.tasks.sources.auto_tasks import (
     _branch_commit_count,
     _check_template,
     _discover_git_repos,
+    _get_diffstat,
+    _get_head_hash,
     _has_code_changes_since,
     _has_commits_since,
     _interval_elapsed,
     _last_completed_at,
     _template_map,
+    check_cooling_reset,
+    get_cooling_reset_at,
     scan,
 )
 
@@ -27,7 +31,7 @@ from wise_magpie.tasks.sources.auto_tasks import (
 
 
 def test_builtin_templates_count():
-    assert len(BUILTIN_TEMPLATES) == 12
+    assert len(BUILTIN_TEMPLATES) == 13
 
 
 def test_template_map_keys():
@@ -44,6 +48,7 @@ def test_template_map_keys():
         "changelog_generation",
         "deprecation_cleanup",
         "type_coverage",
+        "doc_sync_audit",
         "pentest_checklist",
     }
 
@@ -93,10 +98,12 @@ def test_scan_returns_tasks_when_conditions_met():
     with (
         patch("wise_magpie.tasks.sources.auto_tasks.config") as mock_cfg,
         patch("wise_magpie.tasks.sources.auto_tasks._check_template") as mock_check,
+        patch("wise_magpie.tasks.sources.auto_tasks.check_cooling_reset", return_value=False),
+        patch("wise_magpie.tasks.sources.auto_tasks.get_cooling_reset_at", return_value=None),
     ):
         mock_cfg.load_config.return_value = cfg
         # Only run_tests will pass the check
-        mock_check.side_effect = lambda t, p, c: t.task_type == "run_tests"
+        mock_check.side_effect = lambda t, p, c, **kw: t.task_type == "run_tests"
 
         tasks = scan("/some/path")
 
@@ -115,6 +122,8 @@ def test_scan_source_ref_contains_today():
     with (
         patch("wise_magpie.tasks.sources.auto_tasks.config") as mock_cfg,
         patch("wise_magpie.tasks.sources.auto_tasks._check_template", return_value=True),
+        patch("wise_magpie.tasks.sources.auto_tasks.check_cooling_reset", return_value=False),
+        patch("wise_magpie.tasks.sources.auto_tasks.get_cooling_reset_at", return_value=None),
     ):
         mock_cfg.load_config.return_value = cfg
         tasks = scan("/tmp")
@@ -133,6 +142,8 @@ def test_scan_dedup_same_day():
     with (
         patch("wise_magpie.tasks.sources.auto_tasks.config") as mock_cfg,
         patch("wise_magpie.tasks.sources.auto_tasks._check_template", return_value=True),
+        patch("wise_magpie.tasks.sources.auto_tasks.check_cooling_reset", return_value=False),
+        patch("wise_magpie.tasks.sources.auto_tasks.get_cooling_reset_at", return_value=None),
     ):
         mock_cfg.load_config.return_value = cfg
         first = scan("/tmp")
@@ -364,6 +375,8 @@ def test_scan_task_fields():
     with (
         patch("wise_magpie.tasks.sources.auto_tasks.config") as mock_cfg,
         patch("wise_magpie.tasks.sources.auto_tasks._check_template", return_value=True),
+        patch("wise_magpie.tasks.sources.auto_tasks.check_cooling_reset", return_value=False),
+        patch("wise_magpie.tasks.sources.auto_tasks.get_cooling_reset_at", return_value=None),
     ):
         mock_cfg.load_config.return_value = cfg
         tasks = scan("/tmp")
@@ -382,13 +395,15 @@ def test_scan_uses_work_dir_from_config():
 
     calls = []
 
-    def fake_check(template, path, c):
+    def fake_check(template, path, c, **kw):
         calls.append(path)
         return False
 
     with (
         patch("wise_magpie.tasks.sources.auto_tasks.config") as mock_cfg,
         patch("wise_magpie.tasks.sources.auto_tasks._check_template", side_effect=fake_check),
+        patch("wise_magpie.tasks.sources.auto_tasks.check_cooling_reset", return_value=False),
+        patch("wise_magpie.tasks.sources.auto_tasks.get_cooling_reset_at", return_value=None),
     ):
         mock_cfg.load_config.return_value = cfg
         scan("/ignored/path")
@@ -407,13 +422,15 @@ def test_scan_work_dirs_multi_project():
 
     calls: list[str] = []
 
-    def fake_check(template, path, c):
+    def fake_check(template, path, c, **kw):
         calls.append(path)
         return template.task_type == "run_tests"
 
     with (
         patch("wise_magpie.tasks.sources.auto_tasks.config") as mock_cfg,
         patch("wise_magpie.tasks.sources.auto_tasks._check_template", side_effect=fake_check),
+        patch("wise_magpie.tasks.sources.auto_tasks.check_cooling_reset", return_value=False),
+        patch("wise_magpie.tasks.sources.auto_tasks.get_cooling_reset_at", return_value=None),
     ):
         mock_cfg.load_config.return_value = cfg
         tasks = scan("/ignored/path")
@@ -463,7 +480,7 @@ def test_scan_work_dir_parent():
 
     calls: list[str] = []
 
-    def fake_check(template, path, c):
+    def fake_check(template, path, c, **kw):
         calls.append(path)
         return False
 
@@ -474,6 +491,8 @@ def test_scan_work_dir_parent():
             "wise_magpie.tasks.sources.auto_tasks._discover_git_repos",
             return_value=["/parent/proj_a", "/parent/proj_b"],
         ),
+        patch("wise_magpie.tasks.sources.auto_tasks.check_cooling_reset", return_value=False),
+        patch("wise_magpie.tasks.sources.auto_tasks.get_cooling_reset_at", return_value=None),
     ):
         mock_cfg.load_config.return_value = cfg
         scan("/ignored")
@@ -496,6 +515,8 @@ def test_scan_work_dirs_source_ref_includes_project():
     with (
         patch("wise_magpie.tasks.sources.auto_tasks.config") as mock_cfg,
         patch("wise_magpie.tasks.sources.auto_tasks._check_template", return_value=True),
+        patch("wise_magpie.tasks.sources.auto_tasks.check_cooling_reset", return_value=False),
+        patch("wise_magpie.tasks.sources.auto_tasks.get_cooling_reset_at", return_value=None),
     ):
         mock_cfg.load_config.return_value = cfg
         tasks = scan("/tmp")
@@ -662,3 +683,206 @@ def test_check_template_pentest_checklist_disabled():
     cfg = {"pentest_checklist": {"enabled": False}}
 
     assert _check_template(template, "/tmp", cfg) is False
+
+
+# ---------------------------------------------------------------------------
+# Burst mode
+# ---------------------------------------------------------------------------
+
+
+def test_check_template_burst_bypasses_interval():
+    """In burst mode, interval check is skipped — enabled templates always fire."""
+    template = _template_map()["dependency_check"]
+
+    # Insert a recently completed task so the interval has NOT elapsed
+    t = Task(
+        title="Check dependency updates",
+        source=TaskSource.AUTO_TASK,
+        source_ref="dependency_check:2026-01-01",
+        status=TaskStatus.COMPLETED,
+        completed_at=datetime.now() - timedelta(hours=1),
+    )
+    db.insert_task(t)
+
+    cfg = {"dependency_check": {"enabled": True, "interval_hours": 168}}
+    # Without burst: should NOT fire
+    assert _check_template(template, "/tmp", cfg) is False
+    # With burst: should fire
+    assert _check_template(template, "/tmp", cfg, burst=True) is True
+
+
+def test_check_template_burst_still_respects_disabled():
+    """Burst mode does not override explicitly disabled templates."""
+    template = _template_map()["run_tests"]
+    cfg = {"run_tests": {"enabled": False}}
+
+    assert _check_template(template, "/tmp", cfg, burst=True) is False
+
+
+def test_scan_burst_mode_from_config():
+    """When daemon.burst_mode is True, scan passes burst=True to _check_template."""
+    cfg = {
+        "auto_tasks": {"enabled": True, "work_dir": "/tmp/repo"},
+        "daemon": {"burst_mode": True},
+    }
+
+    burst_values: list[bool] = []
+
+    def fake_check(template, path, c, **kw):
+        burst_values.append(kw.get("burst", False))
+        return False
+
+    with (
+        patch("wise_magpie.tasks.sources.auto_tasks.config") as mock_cfg,
+        patch("wise_magpie.tasks.sources.auto_tasks._check_template", side_effect=fake_check),
+        patch("wise_magpie.tasks.sources.auto_tasks.check_cooling_reset", return_value=False),
+        patch("wise_magpie.tasks.sources.auto_tasks.get_cooling_reset_at", return_value=None),
+    ):
+        mock_cfg.load_config.return_value = cfg
+        scan("/tmp")
+
+    assert len(burst_values) > 0
+    assert all(b is True for b in burst_values)
+
+
+# ---------------------------------------------------------------------------
+# Cooling reset — large change detection
+# ---------------------------------------------------------------------------
+
+
+def test_get_head_hash_success():
+    with patch("wise_magpie.tasks.sources.auto_tasks.subprocess") as mock_sub:
+        mock_sub.run.return_value.returncode = 0
+        mock_sub.run.return_value.stdout = "abc123def456\n"
+        assert _get_head_hash("/tmp") == "abc123def456"
+
+
+def test_get_head_hash_not_a_repo():
+    with patch("wise_magpie.tasks.sources.auto_tasks.subprocess") as mock_sub:
+        mock_sub.run.return_value.returncode = 128
+        assert _get_head_hash("/tmp") is None
+
+
+def test_get_diffstat_parses_output():
+    with patch("wise_magpie.tasks.sources.auto_tasks.subprocess") as mock_sub:
+        mock_sub.run.return_value.returncode = 0
+        mock_sub.run.return_value.stdout = " 15 files changed, 320 insertions(+), 45 deletions(-)\n"
+        files, lines = _get_diffstat("/tmp", "abc123")
+        assert files == 15
+        assert lines == 365
+
+
+def test_get_diffstat_empty():
+    with patch("wise_magpie.tasks.sources.auto_tasks.subprocess") as mock_sub:
+        mock_sub.run.return_value.returncode = 0
+        mock_sub.run.return_value.stdout = ""
+        files, lines = _get_diffstat("/tmp", "abc123")
+        assert files == 0
+        assert lines == 0
+
+
+def test_check_cooling_reset_large_change(tmp_path):
+    """Large changes should trigger a cooling reset."""
+    state_file = tmp_path / "cooling_state.json"
+
+    with (
+        patch("wise_magpie.tasks.sources.auto_tasks._cooling_state_path", return_value=state_file),
+        patch("wise_magpie.tasks.sources.auto_tasks._get_head_hash", return_value="new_hash"),
+        patch("wise_magpie.tasks.sources.auto_tasks._get_diffstat", return_value=(20, 500)),
+    ):
+        # First call: no previous state → records head, no reset
+        result1 = check_cooling_reset("/tmp/repo", {})
+        assert result1 is False
+
+        # Simulate stored state with old head
+        import json
+        state = json.loads(state_file.read_text())
+        repo_key = list(state.keys())[0]
+        state[repo_key]["last_head"] = "old_hash"
+        state_file.write_text(json.dumps(state))
+
+        # Second call: diff exceeds threshold → reset
+        result2 = check_cooling_reset("/tmp/repo", {})
+        assert result2 is True
+
+        # Verify reset_at was written
+        state = json.loads(state_file.read_text())
+        assert "reset_at" in state[repo_key]
+        assert state[repo_key]["trigger"]["files"] == 20
+
+
+def test_check_cooling_reset_small_change(tmp_path):
+    """Small changes should not trigger a cooling reset."""
+    state_file = tmp_path / "cooling_state.json"
+
+    with (
+        patch("wise_magpie.tasks.sources.auto_tasks._cooling_state_path", return_value=state_file),
+        patch("wise_magpie.tasks.sources.auto_tasks._get_head_hash", return_value="new_hash"),
+        patch("wise_magpie.tasks.sources.auto_tasks._get_diffstat", return_value=(3, 50)),
+    ):
+        # Seed state with old head
+        import json
+        import os
+        state_file.write_text(json.dumps({
+            os.path.realpath("/tmp/repo"): {"last_head": "old_hash"}
+        }))
+
+        result = check_cooling_reset("/tmp/repo", {})
+        assert result is False
+
+
+def test_check_template_cooling_reset_bypasses_interval():
+    """When cooling reset is recent, interval check should be bypassed."""
+    template = _template_map()["dependency_check"]
+
+    # Insert a recently completed task (1h ago)
+    t = Task(
+        title="Check dependency updates",
+        source=TaskSource.AUTO_TASK,
+        source_ref="dependency_check:2026-01-01",
+        status=TaskStatus.COMPLETED,
+        completed_at=datetime.now() - timedelta(hours=1),
+    )
+    db.insert_task(t)
+
+    cfg = {"dependency_check": {"enabled": True, "interval_hours": 168}}
+
+    # Without cooling reset: should NOT fire (interval not elapsed)
+    assert _check_template(template, "/tmp", cfg) is False
+
+    # With cooling reset more recent than completion: should fire
+    recent_reset = datetime.now() - timedelta(minutes=30)
+    assert _check_template(template, "/tmp", cfg, cooling_reset=recent_reset) is True
+
+
+def test_check_template_cooling_reset_old_does_not_bypass():
+    """Cooling reset older than last completion should not bypass interval."""
+    template = _template_map()["lint_check"]
+
+    t = Task(
+        title="Run linter and fix issues",
+        source=TaskSource.AUTO_TASK,
+        source_ref="lint_check:2026-01-01",
+        status=TaskStatus.COMPLETED,
+        completed_at=datetime.now() - timedelta(hours=1),
+    )
+    db.insert_task(t)
+
+    cfg = {"lint_check": {"enabled": True, "interval_hours": 12}}
+
+    # Cooling reset OLDER than completion → does not bypass
+    old_reset = datetime.now() - timedelta(hours=2)
+    with patch(
+        "wise_magpie.tasks.sources.auto_tasks._has_code_changes_since",
+        return_value=False,
+    ):
+        assert _check_template(template, "/tmp", cfg, cooling_reset=old_reset) is False
+
+
+def test_check_template_cooling_reset_still_respects_disabled():
+    """Cooling reset does not override disabled templates."""
+    template = _template_map()["run_tests"]
+    cfg = {"run_tests": {"enabled": False}}
+
+    recent_reset = datetime.now()
+    assert _check_template(template, "/tmp", cfg, cooling_reset=recent_reset) is False

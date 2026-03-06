@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from dataclasses import dataclass
 from datetime import datetime
@@ -74,6 +75,9 @@ def execute_task(
     cmd = build_claude_command(prompt, work_dir, max_budget_usd, model=model)
     start_time = datetime.now()
 
+    # Remove CLAUDECODE env var to allow launching claude from within a session
+    env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+
     try:
         result = subprocess.run(
             cmd,
@@ -81,6 +85,7 @@ def execute_task(
             capture_output=True,
             text=True,
             timeout=timeout_seconds,
+            env=env,
         )
     except subprocess.TimeoutExpired:
         duration = (datetime.now() - start_time).total_seconds()

@@ -444,12 +444,50 @@ def activity_setup_hooks() -> None:
     click.echo(json.dumps(hooks_config, indent=2, ensure_ascii=False))
 
 
+# --- Burst mode commands ---
+
+@main.group()
+def burst() -> None:
+    """Burst mode: ignore interval checks, maximize throughput."""
+
+
+@burst.command("on")
+def burst_on() -> None:
+    """Enable burst mode (bypass all auto-task interval gates, minimize poll delay)."""
+    from wise_magpie.config import set_value
+    set_value("daemon", "burst_mode", True)
+    click.echo("Burst mode ENABLED. Restart the daemon to apply.")
+
+
+@burst.command("off")
+def burst_off() -> None:
+    """Disable burst mode (return to normal scheduling)."""
+    from wise_magpie.config import set_value
+    set_value("daemon", "burst_mode", False)
+    click.echo("Burst mode DISABLED. Restart the daemon to apply.")
+
+
+@burst.command("status")
+def burst_status() -> None:
+    """Show whether burst mode is currently enabled."""
+    from wise_magpie.config import is_burst_mode
+    if is_burst_mode():
+        click.echo("Burst mode: ENABLED")
+    else:
+        click.echo("Burst mode: disabled")
+
+
 # --- Daemon commands (Phase 6) ---
 
 @main.command()
 @click.option("--foreground", is_flag=True, help="Run in foreground instead of daemonizing")
-def start(foreground: bool) -> None:
+@click.option("--burst", "burst_flag", is_flag=True, help="Enable burst mode for this run")
+def start(foreground: bool, burst_flag: bool) -> None:
     """Start the wise-magpie daemon."""
+    if burst_flag:
+        from wise_magpie.config import set_value
+        set_value("daemon", "burst_mode", True)
+        click.echo("Burst mode enabled.")
     from wise_magpie.daemon.runner import start_daemon
     start_daemon(foreground)
 

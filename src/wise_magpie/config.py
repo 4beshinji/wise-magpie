@@ -49,6 +49,8 @@ return_buffer_minutes = {return_buffer_minutes}
 poll_interval = {poll_interval}
 # Minutes between automatic quota syncs from Anthropic API (0 = disabled)
 auto_sync_interval_minutes = {auto_sync_interval_minutes}
+# Burst mode: ignore auto_task interval checks, minimize poll delay, maximize parallelism
+burst_mode = {burst_mode}
 
 [claude]
 # Fallback model for autonomous tasks (alias or full ID)
@@ -86,12 +88,17 @@ max_tasks = 50
 [auto_tasks]
 # Automatically generate routine maintenance tasks during scan
 enabled = false
-# Auto-discover all git repos directly under this directory (highest priority)
+# Auto-discover all git repos directly under these directories (string or list)
 work_dir_parent = ""
 # Single target directory (used when work_dir_parent and work_dirs are empty)
 work_dir = "."
 # Multiple target directories; if non-empty, work_dir is ignored
 work_dirs = []
+
+# Cooling reset: when code changes exceed these thresholds, all interval
+# timers are reset and every enabled auto-task fires immediately.
+cooling_reset_files = 10
+cooling_reset_lines = 200
 
 [auto_tasks.run_tests]
 enabled = true
@@ -136,6 +143,10 @@ interval_hours = 336
 [auto_tasks.type_coverage]
 enabled = true
 interval_hours = 168
+
+[auto_tasks.doc_sync_audit]
+enabled = true
+interval_hours = 72
 """.format(
     window_hours=constants.DEFAULT_QUOTA_WINDOW_HOURS,
     safety_margin=constants.QUOTA_SAFETY_MARGIN,
@@ -149,6 +160,7 @@ interval_hours = 168
     poll_interval=constants.POLL_INTERVAL_SECONDS,
     model=constants.DEFAULT_MODEL,
     auto_sync_interval_minutes=constants.QUOTA_AUTO_SYNC_INTERVAL_MINUTES,
+    burst_mode="true" if constants.BURST_MODE else "false",
 )
 
 
@@ -196,6 +208,11 @@ def data_dir() -> Path:
     d = CONFIG_DIR
     d.mkdir(parents=True, exist_ok=True)
     return d
+
+
+def is_burst_mode() -> bool:
+    """Return True if burst mode is enabled in config."""
+    return load_config().get("daemon", {}).get("burst_mode", constants.BURST_MODE)
 
 
 def set_value(section: str, key: str, value: Any) -> None:

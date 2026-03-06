@@ -218,12 +218,18 @@ def _daemon_loop(handler: SignalHandler) -> None:
     """Main daemon loop with parallel task execution."""
     db.init_db()
     cfg = config.load_config()
-    poll_interval = cfg.get("daemon", {}).get("poll_interval", constants.POLL_INTERVAL_SECONDS)
+    burst = config.is_burst_mode()
+    if burst:
+        poll_interval = constants.BURST_POLL_INTERVAL_SECONDS
+    else:
+        poll_interval = cfg.get("daemon", {}).get("poll_interval", constants.POLL_INTERVAL_SECONDS)
     sync_interval = cfg.get("quota", {}).get(
         "auto_sync_interval_minutes", constants.QUOTA_AUTO_SYNC_INTERVAL_MINUTES
     ) * 60  # convert to seconds
 
-    logger.info("Daemon started (PID %d)", os.getpid())
+    logger.info(
+        "Daemon started (PID %d)%s", os.getpid(), " [BURST MODE]" if burst else ""
+    )
 
     last_sync_at = 0.0  # force sync on first iteration
     active_threads: list[threading.Thread] = []
@@ -388,6 +394,10 @@ def show_status() -> None:
         click.echo(f"         {est['available_for_autonomous']} available for autonomous use")
     except Exception:
         click.echo("Quota:   no data yet")
+
+    # Burst mode
+    if config.is_burst_mode():
+        click.echo("Burst:   ENABLED (intervals bypassed, max parallelism)")
 
     # Parallel limit
     try:

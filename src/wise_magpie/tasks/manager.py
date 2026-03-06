@@ -115,32 +115,46 @@ def list_tasks(status_filter: str | None = None) -> list[Task]:
 
 
 def _configured_paths(explicit_path: str) -> list[str]:
-    """Return paths to scan.
-
-    Priority: work_dir_parent (auto-discover git repos) > work_dirs (explicit
-    list) > work_dir / explicit_path.
-    """
+    """Return paths to scan (merged from all sources, deduplicated)."""
     from pathlib import Path
     from wise_magpie import config as _config
     from wise_magpie.tasks.sources.auto_tasks import _discover_git_repos
     cfg = _config.load_config().get("auto_tasks", {})
+
+    result: list[str] = []
+    seen: set[str] = set()
+
+    def _add(d: str) -> None:
+        if d not in seen:
+            seen.add(d)
+            result.append(d)
+
+    # 1. work_dir_parent: string or list → auto-discover git repos
     parent = cfg.get("work_dir_parent", "")
     if parent:
-        repos = _discover_git_repos(str(Path(parent).expanduser()))
-        if repos:
-            return repos
-    work_dirs: list[str] = cfg.get("work_dirs", [])
-    if work_dirs:
-        return work_dirs
-    # Fall back to work_dir or the explicit path argument
-    single = cfg.get("work_dir", explicit_path) or explicit_path
-    return [single]
+        parents = parent if isinstance(parent, list) else [parent]
+        for p in parents:
+            if p:
+                for repo in _discover_git_repos(str(Path(p).expanduser())):
+                    _add(repo)
+
+    # 2. work_dirs: explicit list (merged)
+    for d in cfg.get("work_dirs", []):
+        _add(d)
+
+    # 3. Fallback
+    if not result:
+        single = cfg.get("work_dir", explicit_path) or explicit_path
+        _add(single)
+
+    return result
 
 
-def scan_tasks(path: str) -> int:
+def scan_tasks(path: str, *, quiet: bool = False) -> int:
     """Run all source scanners, deduplicate, insert new tasks, and reprioritize.
 
     When ``[auto_tasks] work_dirs`` is configured, scans all listed directories.
+    If *quiet* is True, suppress CLI output (used for automatic rescans).
     Returns the number of newly inserted tasks.
     """
     db.init_db()
@@ -154,7 +168,8 @@ def scan_tasks(path: str) -> int:
         found.extend(queue_file.scan(p))
     found.extend(auto_tasks.scan(path))
 
-    click.echo(f"Scanned: found {len(found)} candidate task(s).")
+    if not quiet:
+        click.echo(f"Scanned: found {len(found)} candidate task(s).")
 
     # Build a set of existing (source, source_ref) pairs for dedup
     existing_tasks = db.get_all_tasks()
@@ -176,7 +191,8 @@ def scan_tasks(path: str) -> int:
     # Reprioritize everything so scores stay consistent
     reprioritize_all()
 
-    click.echo(f"Inserted {new_count} new task(s).")
+    if not quiet:
+        click.echo(f"Inserted {new_count} new task(s).")
     return new_count
 
 
