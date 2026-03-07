@@ -1,11 +1,10 @@
 """Tests for quota tracking, estimation, and corrections."""
 
-from datetime import datetime
 
 from wise_magpie import constants, db
-from wise_magpie.quota.tracker import get_usage_summary, record_usage
-from wise_magpie.quota.estimator import estimate_remaining, has_budget_for_task
 from wise_magpie.quota.corrections import apply_correction
+from wise_magpie.quota.estimator import estimate_remaining, has_budget_for_task
+from wise_magpie.quota.tracker import get_usage_summary, record_usage
 
 
 def test_record_usage():
@@ -72,7 +71,6 @@ def test_apply_correction_session_zero():
 def test_apply_correction_weekly_stored():
     """Week corrections should be retrievable via get_latest_weekly_corrections."""
     apply_correction(week_all=28, week_sonnet=4)
-    from wise_magpie import db
     weekly = db.get_latest_weekly_corrections()
     assert weekly["week_all"] is not None
     assert weekly["week_all"]["pct_used"] == 28

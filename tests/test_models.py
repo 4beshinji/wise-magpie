@@ -1,6 +1,6 @@
 """Tests for data models."""
 
-from wise_magpie.models import Task, TaskSource, TaskStatus, UsageRecord, QuotaWindow
+from wise_magpie.models import Task, TaskSource, TaskStatus, UsageRecord
 
 
 def test_task_defaults():

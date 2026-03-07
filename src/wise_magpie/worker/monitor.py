@@ -7,7 +7,7 @@ from datetime import datetime
 import click
 
 from wise_magpie import config, constants, db
-from wise_magpie.quota.estimator import estimate_remaining, has_budget_for_task
+from wise_magpie.quota.estimator import has_budget_for_task
 
 
 def check_budget_available(estimated_cost: float = 0.0) -> tuple[bool, str]:

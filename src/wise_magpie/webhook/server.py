@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Any
 
 from wise_magpie import db
-from wise_magpie.models import Task, TaskSource, TaskStatus
+from wise_magpie.models import Task, TaskSource
 from wise_magpie.tasks.prioritizer import calculate_priority
 
 logger = logging.getLogger(__name__)

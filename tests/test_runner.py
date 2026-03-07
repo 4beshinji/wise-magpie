@@ -18,7 +18,6 @@ from wise_magpie.daemon.runner import (
 )
 from wise_magpie.models import Task, TaskSource, TaskStatus
 
-
 # ---------------------------------------------------------------------------
 # PID management
 # ---------------------------------------------------------------------------

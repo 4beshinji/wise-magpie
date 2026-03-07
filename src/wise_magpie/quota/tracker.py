@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 
 import click
 
-from wise_magpie import config, constants, db
+from wise_magpie import constants, db
 from wise_magpie.models import UsageRecord
 
 

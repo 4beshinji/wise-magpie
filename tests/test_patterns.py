@@ -1,12 +1,15 @@
 """Tests for activity patterns and prediction."""
 
 from datetime import datetime, timedelta
-from unittest.mock import patch
 
 from wise_magpie import db
 from wise_magpie.models import ActivitySession, SchedulePattern
 from wise_magpie.patterns.activity import get_idle_minutes, is_user_active
-from wise_magpie.patterns.predictor import predict_idle_windows, predict_next_return, estimate_wasted_quota
+from wise_magpie.patterns.predictor import (
+    estimate_wasted_quota,
+    predict_idle_windows,
+    predict_next_return,
+)
 from wise_magpie.patterns.schedule import get_pattern, update_patterns
 
 

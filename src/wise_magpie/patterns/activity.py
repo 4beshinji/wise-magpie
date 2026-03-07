@@ -12,9 +12,9 @@ Additionally supports direct event injection via Claude Code Hooks:
 from __future__ import annotations
 
 import subprocess
-from datetime import datetime, timedelta
+from datetime import datetime
 
-from wise_magpie import db, config, constants
+from wise_magpie import db
 from wise_magpie.models import ActivitySession
 
 # Module-level state: tracks the current open activity session.

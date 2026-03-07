@@ -5,15 +5,15 @@ from pathlib import Path
 
 import pytest
 
+from wise_magpie.worker.executor import _is_rate_limit_error, build_claude_command
+from wise_magpie.worker.monitor import check_budget_available, get_task_budget
 from wise_magpie.worker.sandbox import (
     _sanitize_branch_name,
-    create_sandbox,
     cleanup_sandbox,
+    create_sandbox,
     get_current_branch,
     has_uncommitted_changes,
 )
-from wise_magpie.worker.executor import build_claude_command, _is_rate_limit_error
-from wise_magpie.worker.monitor import check_budget_available, get_task_budget
 
 
 def test_sanitize_branch_name():

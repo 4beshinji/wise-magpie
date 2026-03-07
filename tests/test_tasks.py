@@ -1,12 +1,11 @@
 """Tests for task management."""
 
-import tempfile
 from pathlib import Path
 
 from wise_magpie import db
 from wise_magpie.models import Task, TaskSource, TaskStatus
-from wise_magpie.tasks.prioritizer import calculate_priority
 from wise_magpie.tasks.manager import add_task, get_next_task, remove_task
+from wise_magpie.tasks.prioritizer import calculate_priority
 from wise_magpie.tasks.sources.queue_file import scan as scan_queue
 
 

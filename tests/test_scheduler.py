@@ -6,7 +6,11 @@ from datetime import datetime, timedelta
 from unittest.mock import patch
 
 from wise_magpie import db
-from wise_magpie.daemon.scheduler import calculate_max_parallel, should_execute, trip_circuit_breaker
+from wise_magpie.daemon.scheduler import (
+    calculate_max_parallel,
+    should_execute,
+    trip_circuit_breaker,
+)
 from wise_magpie.models import Task, TaskSource, TaskStatus
 
 

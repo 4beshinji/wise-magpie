@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 from wise_magpie.quota.claude_api import UsageSnapshot, _parse_dt, fetch_usage
@@ -101,7 +100,6 @@ class TestAutoSync:
     def test_auto_sync_applies_corrections(self, tmp_path, monkeypatch):
         from wise_magpie.quota.corrections import auto_sync
         from wise_magpie.quota.estimator import estimate_remaining
-        from wise_magpie import constants
 
         snapshot: UsageSnapshot = {
             "five_hour_pct": 50.0,

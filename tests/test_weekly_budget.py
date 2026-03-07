@@ -5,8 +5,6 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from unittest.mock import patch
 
-import pytest
-
 from wise_magpie import constants
 from wise_magpie.quota.weekly_budget import (
     compute_weekly_parallel_limit,
@@ -14,7 +12,6 @@ from wise_magpie.quota.weekly_budget import (
     get_weekly_parallel_limit,
     update_weekly_limit,
 )
-
 
 # ---------------------------------------------------------------------------
 # get_hours_until_weekly_reset

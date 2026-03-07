@@ -5,14 +5,11 @@ from __future__ import annotations
 import logging
 import os
 import signal
-import sys
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import click
-
-from datetime import timedelta
 
 from wise_magpie import config, constants, db
 from wise_magpie.daemon.scheduler import get_parallel_limit, should_execute, trip_circuit_breaker
@@ -25,7 +22,7 @@ from wise_magpie.patterns.activity import record_activity
 from wise_magpie.tasks.manager import get_next_task
 from wise_magpie.tasks.model_selector import select_model
 from wise_magpie.worker.executor import execute_task
-from wise_magpie.worker.monitor import check_budget_available, get_task_budget, report_execution
+from wise_magpie.worker.monitor import get_task_budget, report_execution
 from wise_magpie.worker.sandbox import auto_create_pr, cleanup_sandbox, create_sandbox
 
 logger = logging.getLogger("wise-magpie")

@@ -18,9 +18,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from threading import Lock, Thread
 
+from wise_magpie.swarm.frame import DecodeError, Frame, FrameType, decode, encode
+
 from wise_magpie import config, constants, db
 from wise_magpie.models import TaskStatus
-from wise_magpie.swarm.frame import DecodeError, Frame, FrameType, decode, encode
 
 logger = logging.getLogger("wise-magpie")
 

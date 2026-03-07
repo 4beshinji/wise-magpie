@@ -18,8 +18,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from wise_magpie import constants
-from wise_magpie import db
+from wise_magpie import constants, db
 from wise_magpie.models import Task, TaskStatus
 
 _CREDENTIALS_FILE = Path.home() / ".claude" / ".credentials.json"

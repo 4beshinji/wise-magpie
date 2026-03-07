@@ -17,10 +17,9 @@ from __future__ import annotations
 import json
 import urllib.error
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import TypedDict
-
 
 _CREDENTIALS_FILE = Path.home() / ".claude" / ".credentials.json"
 _USAGE_URL = "https://api.anthropic.com/api/oauth/usage"

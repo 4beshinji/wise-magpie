@@ -12,7 +12,6 @@ from wise_magpie.models import Task, TaskSource, TaskStatus
 from wise_magpie.tasks.prioritizer import calculate_priority, reprioritize_all
 from wise_magpie.tasks.sources import auto_tasks, git_todos, queue_file
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -117,6 +116,7 @@ def list_tasks(status_filter: str | None = None) -> list[Task]:
 def _configured_paths(explicit_path: str) -> list[str]:
     """Return paths to scan (merged from all sources, deduplicated)."""
     from pathlib import Path
+
     from wise_magpie import config as _config
     from wise_magpie.tasks.sources.auto_tasks import _discover_git_repos
     cfg = _config.load_config().get("auto_tasks", {})

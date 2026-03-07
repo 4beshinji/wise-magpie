@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 
 import click
 
-from wise_magpie import db, config, constants
+from wise_magpie import config, constants, db
 from wise_magpie.models import SchedulePattern
 
 # Probability threshold below which an hour is considered "idle".

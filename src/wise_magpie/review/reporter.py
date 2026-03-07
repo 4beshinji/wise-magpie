@@ -42,11 +42,11 @@ def show_review(task_id: int) -> None:
     click.echo(f"Done:    {task.completed_at}")
 
     if task.result_summary:
-        click.echo(f"\n--- Result Summary ---")
+        click.echo("\n--- Result Summary ---")
         click.echo(task.result_summary)
 
     if task.work_branch and task.work_dir:
-        click.echo(f"\n--- Commits ---")
+        click.echo("\n--- Commits ---")
         try:
             # Determine base branch (strip wise-magpie/ prefix and task suffix)
             log = get_branch_log(task.work_dir, task.work_branch, "HEAD")
@@ -57,7 +57,7 @@ def show_review(task_id: int) -> None:
         except Exception as e:
             click.echo(f"(could not get log: {e})")
 
-        click.echo(f"\n--- Diff ---")
+        click.echo("\n--- Diff ---")
         try:
             diff = get_branch_diff(task.work_dir, task.work_branch, "HEAD")
             if diff:

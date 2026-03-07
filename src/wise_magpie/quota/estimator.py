@@ -10,7 +10,6 @@ from wise_magpie import config, constants, db
 from wise_magpie.constants import MODEL_QUOTAS, resolve_model
 from wise_magpie.models import QuotaWindow
 
-
 # Cache of the last successful API snapshot (survives transient 429s).
 _last_api_snapshot: dict = {}
 

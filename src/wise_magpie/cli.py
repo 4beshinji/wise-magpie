@@ -36,7 +36,7 @@ def config_init(force: bool) -> None:
 @config.command("show")
 def config_show() -> None:
     """Show current configuration."""
-    from wise_magpie.config import CONFIG_FILE, load_config
+    from wise_magpie.config import CONFIG_FILE
     if not CONFIG_FILE.exists():
         click.echo(f"No config file found at {CONFIG_FILE}", err=True)
         click.echo("Run 'wise-magpie config init' to create one.", err=True)

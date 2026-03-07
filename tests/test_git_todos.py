@@ -5,8 +5,6 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-import pytest
-
 from wise_magpie.tasks.sources.git_todos import _TODO_RE, scan
 
 

@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import enum
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from wise_magpie import config, constants
-from wise_magpie.constants import MODEL_ALIASES, resolve_model
+from wise_magpie.constants import resolve_model
 from wise_magpie.models import Task, TaskSource
 
 logger = logging.getLogger("wise-magpie")

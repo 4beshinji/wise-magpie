@@ -15,7 +15,6 @@ from wise_magpie.tasks.model_selector import (
     should_upgrade_model,
 )
 
-
 # --- resolve_model ---
 
 def test_resolve_model_alias():
@@ -219,10 +218,9 @@ def test_get_model_usage_count():
 
 def test_quota_correction_session():
     """Session percentage correction should be recorded and affect remaining estimate."""
-    from unittest.mock import patch
+    from wise_magpie import constants
     from wise_magpie.quota.corrections import apply_correction
     from wise_magpie.quota.estimator import estimate_remaining
-    from wise_magpie import constants
 
     apply_correction(session=50)  # 50% used in current session
 

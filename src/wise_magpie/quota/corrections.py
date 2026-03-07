@@ -16,7 +16,7 @@ from datetime import datetime
 import click
 
 from wise_magpie import config, constants, db
-from wise_magpie.constants import MODEL_ALIASES, resolve_model
+from wise_magpie.constants import MODEL_ALIASES
 from wise_magpie.models import QuotaWindow
 from wise_magpie.quota.estimator import get_model_limit
 

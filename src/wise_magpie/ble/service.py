@@ -10,7 +10,6 @@ Requires the ``dbus-fast`` package (install with ``pip install wise-magpie[ble]`
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import signal
 from typing import Any
@@ -18,7 +17,7 @@ from typing import Any
 try:
     from dbus_fast import Variant
     from dbus_fast.aio import MessageBus
-    from dbus_fast.service import ServiceInterface, dbus_property, method, signal as dbus_signal
+    from dbus_fast.service import ServiceInterface, dbus_property, method
 except ImportError:
     raise SystemExit(
         "BLE support requires the 'dbus-fast' package.\n"
@@ -27,7 +26,6 @@ except ImportError:
 
 from wise_magpie.ble.constants import (
     ADV_PATH,
-    ADAPTER_IFACE,
     APP_PATH,
     BLUEZ_SERVICE,
     COMMAND_CHAR_PATH,

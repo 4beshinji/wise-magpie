@@ -4,8 +4,8 @@ import json
 import logging
 import re
 
-from wise_magpie.worker.sandbox import get_branch_diff
 from wise_magpie.worker.executor import execute_task
+from wise_magpie.worker.sandbox import get_branch_diff
 
 logger = logging.getLogger(__name__)
 

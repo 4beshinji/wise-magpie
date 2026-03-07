@@ -20,10 +20,8 @@ from wise_magpie.tasks.sources.auto_tasks import (
     _last_completed_at,
     _template_map,
     check_cooling_reset,
-    get_cooling_reset_at,
     scan,
 )
-
 
 # ---------------------------------------------------------------------------
 # Template basics

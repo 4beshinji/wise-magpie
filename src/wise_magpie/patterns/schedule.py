@@ -7,11 +7,11 @@ probability model of when the user is typically active.
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import click
 
-from wise_magpie import db, config, constants
+from wise_magpie import db
 from wise_magpie.models import SchedulePattern
 
 
