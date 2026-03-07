@@ -10,12 +10,14 @@ from pathlib import Path
 
 from wise_magpie.models import Task, TaskSource
 
-# Pattern matches common comment markers followed by TODO/FIXME/HACK/XXX
-# Captures the keyword and the trailing text.
+# Pattern matches lines containing a TODO/FIXME/HACK/XXX keyword.
+# The leader is kept intentionally broad (any non-word char boundary) so we
+# catch every comment style without maintaining an exhaustive allow-list.
 _TODO_RE = re.compile(
-    r"(?:#|//|/\*|\*|--|;)\s*"           # comment leader
+    r"(?:^|\W)"                          # line start or non-word char
     r"(TODO|FIXME|HACK|XXX)"             # keyword
-    r"[\s:(\-]*"                         # optional separator
+    r"(?:\([^)]*\))?"                    # optional parenthesized annotation
+    r"[\s:\-]*"                          # optional separator
     r"(.+?)$",                           # comment body
     re.IGNORECASE,
 )

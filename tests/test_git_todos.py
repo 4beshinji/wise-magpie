@@ -39,6 +39,21 @@ class TestTodoRegex:
     def test_case_insensitive(self):
         assert _TODO_RE.search("# todo: lowercase")
 
+    def test_html_comment(self):
+        assert _TODO_RE.search("<!-- TODO: fix layout -->")
+
+    def test_percent_comment(self):
+        assert _TODO_RE.search("% TODO: update formula")
+
+    def test_parenthesized_annotation_stripped(self):
+        m = _TODO_RE.search("// TODO(fix): This is hacky")
+        assert m and m.group(1).upper() == "TODO"
+        assert m.group(2).strip() == "This is hacky"
+
+    def test_parenthesized_author_stripped(self):
+        m = _TODO_RE.search("# TODO(alice): refactor later")
+        assert m and m.group(2).strip() == "refactor later"
+
     def test_no_match_plain_text(self):
         assert _TODO_RE.search("this is a regular line") is None
 
