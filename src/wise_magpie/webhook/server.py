@@ -31,9 +31,14 @@ PRIORITY_PUSH = 30.0
 # ---------------------------------------------------------------------------
 
 def _verify_signature(body: bytes, secret: str, signature_header: str) -> bool:
-    """Return True if the HMAC-SHA256 signature matches, or if no secret is set."""
+    """Return True if the HMAC-SHA256 signature matches.
+
+    Rejects all requests when no secret is configured — callers should
+    not start the server without a secret in the first place.
+    """
     if not secret:
-        return True
+        logger.warning("Webhook request rejected: no secret configured")
+        return False
     if not signature_header.startswith("sha256="):
         return False
     expected = "sha256=" + hmac.new(
@@ -170,8 +175,14 @@ class _WebhookHandler(BaseHTTPRequestHandler):
     # POST /webhook/github
     # ------------------------------------------------------------------
 
+    # Maximum request body size (1 MB) to prevent memory exhaustion.
+    _MAX_BODY_SIZE = 1_048_576
+
     def _handle_github_webhook(self) -> None:
         length = int(self.headers.get("Content-Length", 0))
+        if length > self._MAX_BODY_SIZE:
+            self._respond(413, "Request body too large")
+            return
         raw_body = self.rfile.read(length)
 
         # Signature verification
@@ -195,9 +206,9 @@ class _WebhookHandler(BaseHTTPRequestHandler):
 
         try:
             status_code, message = handler(payload)
-        except Exception as exc:  # noqa: BLE001
+        except Exception:  # noqa: BLE001
             logger.exception("Error handling event %s", event)
-            self._respond(500, f"Internal error: {exc}")
+            self._respond(500, "Internal server error")
             return
 
         self._respond(status_code, message)
@@ -237,6 +248,14 @@ class _WebhookHandler(BaseHTTPRequestHandler):
 
 def start_server(host: str = "127.0.0.1", port: int = 8765, secret: str = "") -> None:
     """Start the webhook HTTP server (blocking)."""
+    if not secret:
+        logger.error(
+            "Webhook secret is not configured. Set webhook.secret in config "
+            "or WISE_MAGPIE_WEBHOOK_SECRET env var. Refusing to start without "
+            "authentication."
+        )
+        raise SystemExit(1)
+
     # Inject secret into handler class
     _WebhookHandler.webhook_secret = secret
 

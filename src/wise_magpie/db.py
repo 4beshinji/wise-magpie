@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime
@@ -129,9 +130,17 @@ def connect() -> Generator[sqlite3.Connection, None, None]:
 
 def init_db() -> None:
     """Initialize the database schema and run migrations."""
+    db_path = _db_path()
+    is_new = not db_path.exists()
     with connect() as conn:
         conn.executescript(SCHEMA)
         _migrate(conn)
+    # Restrict database file permissions to owner-only (0600).
+    if is_new and db_path.exists():
+        try:
+            os.chmod(db_path, 0o600)
+        except OSError:
+            pass
 
 
 def _migrate(conn: sqlite3.Connection) -> None:

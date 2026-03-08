@@ -28,6 +28,10 @@ _BATCH_BETA = "message-batches-2024-09-24"
 _DEFAULT_MAX_TOKENS = 4096
 _DEFAULT_MODEL = constants.DEFAULT_MODEL
 
+# Pattern for validating batch IDs before URL construction.
+import re as _re
+_BATCH_ID_RE = _re.compile(r"^[a-zA-Z0-9_-]+$")
+
 
 def _get_api_key() -> str | None:
     """Read the Anthropic API key from ~/.claude/.credentials.json."""
@@ -141,6 +145,10 @@ def check_batch(batch_id: str) -> dict:
         A dict with at minimum ``id``, ``processing_status``, and
         ``request_counts``. Returns an empty dict on error.
     """
+    if not _BATCH_ID_RE.match(batch_id):
+        print(f"batch: invalid batch_id format: {batch_id!r}")
+        return {}
+
     api_key = _get_api_key()
     if not api_key:
         print("batch: no API key found")
@@ -182,6 +190,10 @@ def collect_results(batch_id: str) -> list[dict]:
         ``result`` contains ``type`` (``"succeeded"`` or ``"errored"``) and,
         on success, a ``message`` dict.
     """
+    if not _BATCH_ID_RE.match(batch_id):
+        print(f"batch: invalid batch_id format: {batch_id!r}")
+        return []
+
     api_key = _get_api_key()
     if not api_key:
         print("batch: no API key found")
